@@ -8,7 +8,7 @@ import * as SecureStore from 'expo-secure-store';
 
 // ── Config ─────────────────────────────
 // Replace with your backend URL:
-export const BASE_URL = 'https://api.camisfit.com.br/v1';
+export const BASE_URL = 'https://camis-fit.vercel.app/api';
 
 const api = axios.create({
   baseURL: BASE_URL,
