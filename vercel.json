@@ -7,5 +7,12 @@
       "memory": 512,
       "maxDuration": 30
     }
-  }
+  },
+  "rewrites": [
+    { "source": "/api/auth/:path*", "destination": "/api/auth" },
+    { "source": "/api/aluno/:path*", "destination": "/api/aluno" },
+    { "source": "/api/instrutor/:path*", "destination": "/api/instrutor" },
+    { "source": "/api/ia/:path*", "destination": "/api/ia" },
+    { "source": "/api/notificacoes/:path*", "destination": "/api/notificacoes" }
+  ]
 }
