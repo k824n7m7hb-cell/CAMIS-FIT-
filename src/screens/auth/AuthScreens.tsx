@@ -5,9 +5,11 @@
 import React, { useState } from 'react';
 import {
   View, Text, ScrollView, TouchableOpacity,
-  KeyboardAvoidingView, Platform, Alert, StyleSheet,
+  KeyboardAvoidingView, Platform, Alert, StyleSheet, Image,
 } from 'react-native';
 import * as SecureStore from 'expo-secure-store';
+
+const logo = require('../../../assets/logo.png');
 import { Colors, Typography, Spacing, Radius, Shadows } from '../../theme';
 import { NeonButton, Input, Card } from '../../components';
 import { useStore } from '../../services/store';
@@ -31,7 +33,7 @@ export const WelcomeScreen = ({ navigation }: any) => (
   <View style={[S.screen, S.center]}>
     <View style={{ marginBottom: 40, alignItems: 'center' }}>
       <View style={{ width: 70, height: 70, borderRadius: 22, backgroundColor: Colors.neonDim, borderWidth: 1.5, borderColor: Colors.neonBorder, alignItems: 'center', justifyContent: 'center', marginBottom: 16, ...Shadows.neonSm }}>
-        <Text style={{ fontSize: 30 }}>⚡</Text>
+        <Image source={logo} style={{ width: 50, height: 50, borderRadius: 12 }} resizeMode="contain" />
       </View>
       <Text style={S.logo}>CAMIS<Text style={{ color: Colors.neon }}>FIT</Text></Text>
       <Text style={S.tagline}>Sua plataforma fitness completa{'\n'}com IA coach personalizada</Text>
@@ -113,13 +115,17 @@ export const LoginInstrutorScreen = ({ navigation }: any) => {
 
 // ── Cadastro Instrutor ─────────────────
 export const CadastroInstrutorScreen = ({ navigation }: any) => {
+  const [etapa, setEtapa] = useState<1 | 2>(1);
   const [nome, setNome] = useState('');
   const [email, setEmail] = useState('');
   const [senha, setSenha] = useState('');
   const [confirmar, setConfirmar] = useState('');
   const [cref, setCref] = useState('');
   const [telefone, setTelefone] = useState('');
+  const [codigo, setCodigo] = useState('');
+  const [emailPendente, setEmailPendente] = useState('');
   const [loading, setLoading] = useState(false);
+  const [loadingReenvio, setLoadingReenvio] = useState(false);
   const setUser = useStore(s => s.setUser);
 
   const handleCadastro = async () => {
@@ -128,23 +134,90 @@ export const CadastroInstrutorScreen = ({ navigation }: any) => {
     setLoading(true);
     try {
       const res = await authAPI.cadastroInstrutor({ nome, email, senha, cref, telefone });
-      const { token, user: u } = res.data;
-      await SecureStore.setItemAsync('camisfit_token', token);
-      setUser({
-        id: u.id,
-        nome: u.nome,
-        email: u.email,
-        role: 'instrutor',
-        cref: u.cref,
-        codigoConvite: u.codigo_convite,
-        avatarInitials: u.nome.slice(0, 2).toUpperCase(),
-      }, token);
+      if (res.data.emailEnviado) {
+        setEmailPendente(res.data.email);
+        setEtapa(2);
+      }
     } catch (err: any) {
       Alert.alert('Erro ao cadastrar', err.response?.data?.erro || 'Tente novamente.');
     } finally {
       setLoading(false);
     }
   };
+
+  const handleVerificar = async () => {
+    if (codigo.length !== 6) { Alert.alert('Digite o código de 6 dígitos'); return; }
+    setLoading(true);
+    try {
+      const res = await authAPI.verificarEmailInstrutor(emailPendente, codigo);
+      const { token, user: u } = res.data;
+      await SecureStore.setItemAsync('camisfit_token', token);
+      setUser({
+        id: u.id, nome: u.nome, email: u.email, role: 'instrutor',
+        cref: u.cref, codigoConvite: u.codigo_convite,
+        avatarInitials: u.nome.slice(0, 2).toUpperCase(),
+      }, token);
+    } catch (err: any) {
+      Alert.alert('Código inválido', err.response?.data?.erro || 'Verifique o código e tente novamente.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleReenviar = async () => {
+    setLoadingReenvio(true);
+    try {
+      await authAPI.reenviarCodigoInstrutor(emailPendente);
+      Alert.alert('Código reenviado!', `Verifique sua caixa de entrada em ${emailPendente}`);
+    } catch {
+      Alert.alert('Erro', 'Não foi possível reenviar o código.');
+    } finally {
+      setLoadingReenvio(false);
+    }
+  };
+
+  if (etapa === 2) {
+    return (
+      <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={S.screen}>
+        <ScrollView contentContainerStyle={[S.center, { paddingVertical: 60 }]}>
+          <Text style={[S.logo, { marginBottom: 4 }]}>CAMIS<Text style={{ color: Colors.neon }}>FIT</Text></Text>
+          <Text style={{ fontSize: 12, color: Colors.textSub, marginBottom: 32 }}>Ative sua conta</Text>
+
+          <View style={[S.card]}>
+            <View style={{ alignItems: 'center', marginBottom: 20 }}>
+              <Text style={{ fontSize: 36, marginBottom: 10 }}>📧</Text>
+              <Text style={{ fontSize: 15, fontWeight: Typography.weights.bold, color: Colors.text, textAlign: 'center' }}>Verifique seu email</Text>
+              <Text style={{ fontSize: 12, color: Colors.textSub, textAlign: 'center', marginTop: 6, lineHeight: 18 }}>
+                Enviamos um código de 6 dígitos para{'\n'}
+                <Text style={{ color: Colors.neon, fontWeight: Typography.weights.bold }}>{emailPendente}</Text>
+              </Text>
+            </View>
+
+            <Input
+              label="Código de ativação"
+              value={codigo}
+              onChangeText={v => setCodigo(v.replace(/\D/g, '').slice(0, 6))}
+              placeholder="000000"
+              keyboardType="numeric"
+              autoFocus
+            />
+
+            <NeonButton label="Ativar conta" onPress={handleVerificar} loading={loading} style={{ marginTop: 8 }} />
+
+            <TouchableOpacity onPress={handleReenviar} disabled={loadingReenvio} style={{ marginTop: 16, alignItems: 'center' }}>
+              <Text style={{ color: Colors.textSub, fontSize: 12 }}>
+                {loadingReenvio ? 'Reenviando...' : 'Não recebeu? '}<Text style={S.link}>{loadingReenvio ? '' : 'Reenviar código'}</Text>
+              </Text>
+            </TouchableOpacity>
+          </View>
+
+          <TouchableOpacity onPress={() => setEtapa(1)} style={{ marginTop: 20 }}>
+            <Text style={{ color: Colors.textSub, fontSize: 12 }}>← Voltar ao cadastro</Text>
+          </TouchableOpacity>
+        </ScrollView>
+      </KeyboardAvoidingView>
+    );
+  }
 
   return (
     <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={S.screen}>

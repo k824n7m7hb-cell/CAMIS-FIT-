@@ -8,7 +8,7 @@ import {
   Alert, TextInput, StyleSheet, Share,
 } from 'react-native';
 import { Colors, Typography, Spacing, Radius, Shadows } from '../../theme';
-import { NeonButton, Card, StatCard, SectionTitle, Input, StatusBadge, Tag, ProgressBar, Divider, Avatar } from '../../components';
+import { NeonButton, Card, StatCard, SectionTitle, Input, StatusBadge, Tag, ProgressBar, Divider, Avatar, AppHeader } from '../../components';
 import { useStore } from '../../services/store';
 
 const pad = { paddingHorizontal: Spacing.lg };
@@ -27,18 +27,15 @@ export const InstrutorHomeScreen = ({ navigation }: any) => {
 
   return (
     <ScrollView style={{ flex: 1, backgroundColor: Colors.bg }} showsVerticalScrollIndicator={false}>
-      {/* Header */}
-      <View style={{ backgroundColor: Colors.card, borderBottomWidth: 1, borderBottomColor: Colors.border, padding: Spacing.lg, paddingTop: 50 }}>
-        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-          <View>
-            <Text style={{ fontSize: 12, color: Colors.textSub }}>Olá,</Text>
-            <Text style={{ fontSize: 22, fontWeight: Typography.weights.black }}>{user?.nome} <Text style={{ color: Colors.neon }}>⚡</Text></Text>
-          </View>
+      <AppHeader
+        greeting="Olá,"
+        title={user?.nome || ''}
+        rightContent={
           <View style={{ width: 42, height: 42, borderRadius: 14, backgroundColor: Colors.purpleDim, borderWidth: 1.5, borderColor: Colors.purple + '70', alignItems: 'center', justifyContent: 'center' }}>
             <Text style={{ fontSize: 16, fontWeight: Typography.weights.black, color: '#cc88ff' }}>{user?.avatarInitials}</Text>
           </View>
-        </View>
-      </View>
+        }
+      />
 
       <View style={{ padding: Spacing.lg }}>
         {/* Financial card */}
@@ -104,9 +101,7 @@ export const AlunosScreen = ({ navigation }: any) => {
 
   return (
     <ScrollView style={{ flex: 1, backgroundColor: Colors.bg }} showsVerticalScrollIndicator={false}>
-      <View style={{ backgroundColor: Colors.card, borderBottomWidth: 1, borderBottomColor: Colors.border, padding: Spacing.lg, paddingTop: 50 }}>
-        <Text style={{ fontSize: 20, fontWeight: Typography.weights.black }}>Meus Alunos <Text style={{ fontSize: 14, color: Colors.textSub, fontWeight: Typography.weights.regular }}>({alunos.length})</Text></Text>
-      </View>
+      <AppHeader title={`Meus Alunos (${alunos.length})`} />
 
       <View style={{ padding: Spacing.lg }}>
         {alunos.map(aluno => (
@@ -180,17 +175,53 @@ export const AlunosScreen = ({ navigation }: any) => {
 
 // ── Fichas de Treino Instrutor ─────────
 export const TreinosInstrutorScreen = ({ navigation }: any) => {
-  const { fichasTreino, alunos } = useStore();
+  const { fichasTreino, alunos, addFicha, user } = useStore();
   const [editando, setEditando] = useState<null | string>(null);
+  const [criando, setCriando] = useState(false);
+  const [novaFicha, setNovaFicha] = useState({ titulo: '', nivel: 'Intermediário', duracao: '60', descricao: '' });
+
+  const criarFicha = () => {
+    if (!novaFicha.titulo.trim()) { Alert.alert('Informe o título da ficha'); return; }
+    addFicha({
+      id: 'f-' + Date.now(),
+      titulo: novaFicha.titulo.trim(),
+      descricao: novaFicha.descricao,
+      nivel: novaFicha.nivel,
+      exercicios: [],
+      duracao: parseInt(novaFicha.duracao) || 60,
+      instrutorId: user?.id || 'i1',
+      alunosVinculados: [],
+      criadoEm: new Date().toISOString().split('T')[0],
+    });
+    Alert.alert('Ficha criada!', 'Use "Editar" para adicionar exercícios.');
+    setCriando(false);
+    setNovaFicha({ titulo: '', nivel: 'Intermediário', duracao: '60', descricao: '' });
+  };
 
   return (
     <ScrollView style={{ flex: 1, backgroundColor: Colors.bg }} showsVerticalScrollIndicator={false}>
-      <View style={{ backgroundColor: Colors.card, borderBottomWidth: 1, borderBottomColor: Colors.border, padding: Spacing.lg, paddingTop: 50 }}>
-        <Text style={{ fontSize: 20, fontWeight: Typography.weights.black }}>Fichas de Treino <Text style={{ color: Colors.neon }}>⚡</Text></Text>
-      </View>
+      <AppHeader title="Fichas de Treino" />
 
       <View style={{ padding: Spacing.lg }}>
-        <NeonButton label="+ Nova ficha de treino" onPress={() => Alert.alert('Nova ficha', 'Abrindo editor de ficha...')} style={{ marginBottom: 14 }} />
+        <NeonButton label={criando ? '✕ Cancelar' : '+ Nova ficha de treino'} variant={criando ? 'ghost' : undefined} onPress={() => setCriando(v => !v)} style={{ marginBottom: 12 }} />
+
+        {criando && (
+          <Card style={{ marginBottom: 14 }}>
+            <Text style={{ fontSize: 13, fontWeight: Typography.weights.bold, marginBottom: 12, color: Colors.neon }}>Nova ficha de treino</Text>
+            <Input label="Título *" value={novaFicha.titulo} onChangeText={v => setNovaFicha(p => ({ ...p, titulo: v }))} placeholder="Ex: Treino A – Peito e Tríceps" />
+            <Text style={{ fontSize: 10, fontWeight: Typography.weights.bold, color: Colors.textMid, textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 6 }}>Nível</Text>
+            <View style={{ flexDirection: 'row', gap: 6, marginBottom: 10 }}>
+              {['Iniciante', 'Intermediário', 'Avançado'].map(n => (
+                <TouchableOpacity key={n} onPress={() => setNovaFicha(p => ({ ...p, nivel: n }))} style={{ flex: 1, paddingVertical: 8, borderRadius: Radius.md, borderWidth: 1.5, borderColor: novaFicha.nivel === n ? Colors.neonBorder : Colors.border, backgroundColor: novaFicha.nivel === n ? Colors.neonDim : Colors.card2, alignItems: 'center' }}>
+                  <Text style={{ fontSize: 11, fontWeight: Typography.weights.bold, color: novaFicha.nivel === n ? Colors.neon : Colors.textSub }}>{n}</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+            <Input label="Duração (min)" value={novaFicha.duracao} onChangeText={v => setNovaFicha(p => ({ ...p, duracao: v }))} placeholder="60" keyboardType="numeric" />
+            <Input label="Descrição (opcional)" value={novaFicha.descricao} onChangeText={v => setNovaFicha(p => ({ ...p, descricao: v }))} placeholder="Detalhes da ficha..." />
+            <NeonButton label="Criar ficha" onPress={criarFicha} small />
+          </Card>
+        )}
 
         {fichasTreino.map(ficha => (
           <Card key={ficha.id} neon style={{ marginBottom: 12 }}>
@@ -270,10 +301,7 @@ export const FaturasInstrutorScreen = () => {
 
   return (
     <ScrollView style={{ flex: 1, backgroundColor: Colors.bg }} showsVerticalScrollIndicator={false}>
-      <View style={{ backgroundColor: Colors.card, borderBottomWidth: 1, borderBottomColor: Colors.border, padding: Spacing.lg, paddingTop: 50 }}>
-        <Text style={{ fontSize: 20, fontWeight: Typography.weights.black }}>Faturas</Text>
-        <Text style={{ fontSize: 12, color: Colors.textSub, marginTop: 2 }}>Gerencie cobranças dos seus alunos</Text>
-      </View>
+      <AppHeader title="Faturas" />
 
       <View style={{ padding: Spacing.lg }}>
         <Card neon style={{ marginBottom: 14 }}>
@@ -346,20 +374,19 @@ export const PerfilInstrutorScreen = () => {
   const { user, logout } = useStore();
   const [nome, setNome] = useState(user?.nome || '');
   const [cref, setCref] = useState(user?.cref || '');
+  const [pix, setPix] = useState('');
 
   return (
     <ScrollView style={{ flex: 1, backgroundColor: Colors.bg }} showsVerticalScrollIndicator={false}>
-      {/* Header profile */}
-      <View style={{ backgroundColor: Colors.card, borderBottomWidth: 1, borderBottomColor: Colors.border, padding: Spacing.xl, paddingTop: 60, alignItems: 'center' }}>
-        <View style={{ width: 72, height: 72, borderRadius: 36, backgroundColor: Colors.purpleDim, borderWidth: 2, borderColor: Colors.purple, alignItems: 'center', justifyContent: 'center', marginBottom: 10 }}>
-          <Text style={{ fontSize: 28, fontWeight: Typography.weights.black, color: '#cc88ff' }}>{user?.avatarInitials}</Text>
-        </View>
-        <Text style={{ fontSize: 18, fontWeight: Typography.weights.black }}>{user?.nome}</Text>
-        <Text style={{ fontSize: 12, color: Colors.textSub, marginTop: 2 }}>{user?.cref}</Text>
-        <View style={{ backgroundColor: Colors.purpleDim, borderWidth: 1.5, borderColor: Colors.purple + '70', borderRadius: Radius.full, paddingHorizontal: 16, paddingVertical: 5, marginTop: 8 }}>
-          <Text style={{ fontSize: 11, fontWeight: Typography.weights.bold, color: '#cc88ff' }}>Instrutor Premium</Text>
-        </View>
-      </View>
+      <AppHeader
+        greeting="Perfil"
+        title={user?.nome || ''}
+        rightContent={
+          <View style={{ width: 42, height: 42, borderRadius: 14, backgroundColor: Colors.purpleDim, borderWidth: 1.5, borderColor: Colors.purple + '70', alignItems: 'center', justifyContent: 'center' }}>
+            <Text style={{ fontSize: 16, fontWeight: Typography.weights.black, color: '#cc88ff' }}>{user?.avatarInitials}</Text>
+          </View>
+        }
+      />
 
       <View style={{ padding: Spacing.lg }}>
         <SectionTitle title="Configurações da conta" />
@@ -367,7 +394,7 @@ export const PerfilInstrutorScreen = () => {
           <Input label="Nome completo" value={nome} onChangeText={setNome} placeholder="Seu nome" />
           <Input label="CREF" value={cref} onChangeText={setCref} placeholder="123456-G/SP" autoCapitalize="characters" />
           <Input label="E-mail" value={user?.email || ''} onChangeText={() => {}} placeholder="email@email.com" keyboardType="email-address" autoCapitalize="none" />
-          <Input label="Chave Pix" value="" onChangeText={() => {}} placeholder="CPF, e-mail ou telefone" />
+          <Input label="Chave Pix" value={pix} onChangeText={setPix} placeholder="CPF, e-mail ou telefone" />
           <NeonButton label="Salvar alterações" onPress={() => Alert.alert('Salvo!', 'Perfil atualizado com sucesso.')} small />
         </Card>
 

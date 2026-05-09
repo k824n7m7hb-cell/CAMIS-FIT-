@@ -58,6 +58,12 @@ export const authAPI = {
   validarCodigo: (codigo: string) =>
     api.post('/auth/validar-codigo', { codigo }),
 
+  verificarEmailInstrutor: (email: string, codigo: string) =>
+    api.post('/auth/instrutor/verificar-email', { email, codigo }),
+
+  reenviarCodigoInstrutor: (email: string) =>
+    api.post('/auth/instrutor/reenviar-codigo', { email }),
+
   esqueciSenha: (email: string) =>
     api.post('/auth/esqueci-senha', { email }),
 

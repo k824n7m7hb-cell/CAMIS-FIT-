@@ -9,7 +9,7 @@ import {
   Animated, Easing,
 } from 'react-native';
 import { Colors, Typography, Spacing, Radius, Shadows } from '../../theme';
-import { NeonButton, Card, StatCard, SectionTitle, Input, StatusBadge, Tag, ProgressBar, Divider, Avatar } from '../../components';
+import { NeonButton, Card, StatCard, SectionTitle, Input, StatusBadge, Tag, ProgressBar, Divider, Avatar, AppHeader } from '../../components';
 import { useStore } from '../../services/store';
 
 // ── Home Aluno ─────────────────────────
@@ -22,18 +22,15 @@ export const AlunoHomeScreen = ({ navigation }: any) => {
 
   return (
     <ScrollView style={{ flex: 1, backgroundColor: Colors.bg }} showsVerticalScrollIndicator={false}>
-      {/* Header */}
-      <View style={{ backgroundColor: Colors.card, borderBottomWidth: 1, borderBottomColor: Colors.border, padding: Spacing.lg, paddingTop: 50 }}>
-        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-          <View>
-            <Text style={{ fontSize: 12, color: Colors.textSub }}>Bom dia,</Text>
-            <Text style={{ fontSize: 22, fontWeight: Typography.weights.black }}>{user?.nome?.split(' ')[0]} <Text style={{ color: Colors.neon }}>⚡</Text></Text>
-          </View>
+      <AppHeader
+        greeting="Bom dia,"
+        title={user?.nome?.split(' ')[0] || ''}
+        rightContent={
           <View style={{ backgroundColor: Colors.neonDim, borderWidth: 1.5, borderColor: Colors.neonBorder, borderRadius: 12, paddingHorizontal: 12, paddingVertical: 7 }}>
             <Text style={{ fontSize: 11, fontWeight: Typography.weights.bold, color: Colors.neon }}>Treino hoje</Text>
           </View>
-        </View>
-      </View>
+        }
+      />
 
       <View style={{ padding: Spacing.lg }}>
         {/* Treino do dia */}
@@ -182,22 +179,17 @@ export const TreinoAlunoScreen = ({ navigation }: any) => {
 
   return (
     <ScrollView style={{ flex: 1, backgroundColor: Colors.bg }} showsVerticalScrollIndicator={false}>
-      <View style={{ backgroundColor: Colors.card, borderBottomWidth: 1, borderBottomColor: Colors.border, padding: Spacing.lg, paddingTop: 50 }}>
-        <Text style={{ fontSize: 10, color: Colors.textSub, textTransform: 'uppercase', letterSpacing: 1, fontWeight: Typography.weights.bold }}>Segunda-feira</Text>
-        <Text style={{ fontSize: 20, fontWeight: Typography.weights.black, marginBottom: 10 }}>
-          {ficha.titulo.split('—')[1]?.trim() || ficha.titulo}
-        </Text>
-        {/* Seletor de dias */}
-        <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-          <View style={{ flexDirection: 'row', gap: 8 }}>
-            {dias.map((d, i) => (
-              <TouchableOpacity key={d} onPress={() => setDiaAtivo(i)} style={{ paddingHorizontal: 14, paddingVertical: 8, borderRadius: Radius.md, borderWidth: 1, borderColor: diaAtivo === i ? Colors.neonBorder : Colors.border, backgroundColor: diaAtivo === i ? Colors.neonDim : Colors.card2 }}>
-                <Text style={{ fontSize: 11, fontWeight: Typography.weights.bold, color: diaAtivo === i ? Colors.neon : Colors.textSub }}>{d}</Text>
-              </TouchableOpacity>
-            ))}
-          </View>
-        </ScrollView>
-      </View>
+      <AppHeader greeting="Segunda-feira" title={ficha.titulo.split('—')[1]?.trim() || ficha.titulo} />
+      {/* Seletor de dias */}
+      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ backgroundColor: Colors.card, borderBottomWidth: 1, borderBottomColor: Colors.border, paddingHorizontal: Spacing.lg, paddingBottom: 12 }}>
+        <View style={{ flexDirection: 'row', gap: 8 }}>
+          {dias.map((d, i) => (
+            <TouchableOpacity key={d} onPress={() => setDiaAtivo(i)} style={{ paddingHorizontal: 14, paddingVertical: 8, borderRadius: Radius.md, borderWidth: 1, borderColor: diaAtivo === i ? Colors.neonBorder : Colors.border, backgroundColor: diaAtivo === i ? Colors.neonDim : Colors.card2 }}>
+              <Text style={{ fontSize: 11, fontWeight: Typography.weights.bold, color: diaAtivo === i ? Colors.neon : Colors.textSub }}>{d}</Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+      </ScrollView>
 
       <View style={{ padding: Spacing.lg }}>
         {/* Cronômetro */}
@@ -317,21 +309,18 @@ export const CamilaScreen = () => {
 
   return (
     <KeyboardAvoidingView style={{ flex: 1, backgroundColor: Colors.bg }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-      {/* Header Camila */}
-      <View style={{ backgroundColor: Colors.card, borderBottomWidth: 1, borderBottomColor: Colors.border, padding: Spacing.lg, paddingTop: 50 }}>
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+      <AppHeader
+        title="Camila"
+        greeting="Coach IA · Online agora"
+        rightContent={
           <View style={{ position: 'relative' }}>
-            <View style={{ width: 44, height: 44, borderRadius: 22, backgroundColor: '#ff4ecd40', borderWidth: 2, borderColor: Colors.pink, alignItems: 'center', justifyContent: 'center' }}>
-              <Text style={{ fontSize: 20, fontWeight: Typography.weights.black, color: Colors.pink }}>C</Text>
+            <View style={{ width: 38, height: 38, borderRadius: 19, backgroundColor: '#ff4ecd40', borderWidth: 2, borderColor: Colors.pink, alignItems: 'center', justifyContent: 'center' }}>
+              <Text style={{ fontSize: 16, fontWeight: Typography.weights.black, color: Colors.pink }}>C</Text>
             </View>
             <View style={{ position: 'absolute', bottom: 0, right: 0, width: 10, height: 10, borderRadius: 5, backgroundColor: Colors.neon, borderWidth: 2, borderColor: Colors.bg2 }} />
           </View>
-          <View>
-            <Text style={{ fontSize: 15, fontWeight: Typography.weights.black }}>Camila</Text>
-            <Text style={{ fontSize: 11, color: Colors.neon, fontWeight: Typography.weights.bold }}>Coach IA · Online agora</Text>
-          </View>
-        </View>
-      </View>
+        }
+      />
 
       {/* Mensagens */}
       <ScrollView ref={scrollRef} style={{ flex: 1 }} contentContainerStyle={{ padding: Spacing.lg }} showsVerticalScrollIndicator={false}>
@@ -410,10 +399,7 @@ export const FaturasAlunoScreen = () => {
 
   return (
     <ScrollView style={{ flex: 1, backgroundColor: Colors.bg }} showsVerticalScrollIndicator={false}>
-      <View style={{ backgroundColor: Colors.card, borderBottomWidth: 1, borderBottomColor: Colors.border, padding: Spacing.lg, paddingTop: 50 }}>
-        <Text style={{ fontSize: 20, fontWeight: Typography.weights.black }}>Minhas Faturas</Text>
-        <Text style={{ fontSize: 12, color: Colors.textSub, marginTop: 2 }}>Prof. Ana Beatriz</Text>
-      </View>
+      <AppHeader greeting="Prof. Ana Beatriz" title="Minhas Faturas" />
 
       <View style={{ padding: Spacing.lg }}>
         <Card neon style={{ marginBottom: 14 }}>
@@ -477,10 +463,7 @@ export const EvolucaoAlunoScreen = () => {
 
   return (
     <ScrollView style={{ flex: 1, backgroundColor: Colors.bg }} showsVerticalScrollIndicator={false}>
-      <View style={{ backgroundColor: Colors.card, borderBottomWidth: 1, borderBottomColor: Colors.border, padding: Spacing.lg, paddingTop: 50 }}>
-        <Text style={{ fontSize: 10, color: Colors.textSub, textTransform: 'uppercase', letterSpacing: 1, fontWeight: Typography.weights.bold, marginBottom: 2 }}>Sua jornada</Text>
-        <Text style={{ fontSize: 20, fontWeight: Typography.weights.black }}>Evolução corporal</Text>
-      </View>
+      <AppHeader greeting="Sua jornada" title="Evolução corporal" />
 
       <View style={{ padding: Spacing.lg }}>
         {/* Comparativo */}
@@ -556,7 +539,8 @@ export const PerfilAlunoScreen = () => {
 
   return (
     <ScrollView style={{ flex: 1, backgroundColor: Colors.bg }} showsVerticalScrollIndicator={false}>
-      <View style={{ backgroundColor: Colors.card, padding: Spacing.xl, paddingTop: 60, alignItems: 'center', borderBottomWidth: 1, borderBottomColor: Colors.border }}>
+      <AppHeader greeting={`Aluno · ${user?.instrutorNome}`} title={user?.nome?.split(' ')[0] || 'Perfil'} />
+      <View style={{ backgroundColor: Colors.card, padding: Spacing.xl, paddingTop: Spacing.lg, alignItems: 'center', borderBottomWidth: 1, borderBottomColor: Colors.border }}>
         <View style={{ width: 72, height: 72, borderRadius: 36, backgroundColor: Colors.neonDim, borderWidth: 2.5, borderColor: Colors.neon, alignItems: 'center', justifyContent: 'center', marginBottom: 10, ...Shadows.neon }}>
           <Text style={{ fontSize: 28, fontWeight: Typography.weights.black, color: Colors.neon }}>{user?.avatarInitials}</Text>
         </View>
