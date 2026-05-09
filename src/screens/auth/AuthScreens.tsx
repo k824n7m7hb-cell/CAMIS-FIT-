@@ -7,9 +7,11 @@ import {
   View, Text, ScrollView, TouchableOpacity,
   KeyboardAvoidingView, Platform, Alert, StyleSheet,
 } from 'react-native';
+import * as SecureStore from 'expo-secure-store';
 import { Colors, Typography, Spacing, Radius, Shadows } from '../../theme';
 import { NeonButton, Input, Card } from '../../components';
 import { useStore } from '../../services/store';
+import { authAPI } from '../../services/api';
 
 const S = StyleSheet.create({
   screen: { flex: 1, backgroundColor: Colors.bg },
@@ -56,16 +58,24 @@ export const LoginInstrutorScreen = ({ navigation }: any) => {
   const handleLogin = async () => {
     if (!email || !senha) { Alert.alert('Preencha todos os campos'); return; }
     setLoading(true);
-    // Demo login — replace with: authAPI.loginInstrutor(email, senha)
-    setTimeout(() => {
+    try {
+      const res = await authAPI.loginInstrutor(email, senha);
+      const { token, user: u } = res.data;
+      await SecureStore.setItemAsync('camisfit_token', token);
       setUser({
-        id: 'i1', nome: 'Ana Beatriz', email,
-        role: 'instrutor', cref: '123456-G/SP',
-        codigoConvite: 'ANA-847',
-        avatarInitials: 'AB',
-      }, 'demo-token-instrutor');
+        id: u.id,
+        nome: u.nome,
+        email: u.email,
+        role: 'instrutor',
+        cref: u.cref,
+        codigoConvite: u.codigo_convite,
+        avatarInitials: u.nome.slice(0, 2).toUpperCase(),
+      }, token);
+    } catch (err: any) {
+      Alert.alert('Erro ao entrar', err.response?.data?.erro || 'Verifique suas credenciais e tente novamente.');
+    } finally {
       setLoading(false);
-    }, 1000);
+    }
   };
 
   return (
@@ -116,16 +126,24 @@ export const CadastroInstrutorScreen = ({ navigation }: any) => {
     if (!nome || !email || !senha || !cref) { Alert.alert('Preencha todos os campos obrigatórios'); return; }
     if (senha !== confirmar) { Alert.alert('As senhas não conferem'); return; }
     setLoading(true);
-    // Replace with: authAPI.cadastroInstrutor({ nome, email, senha, cref, telefone })
-    setTimeout(() => {
-      const codigo = nome.split(' ')[0].toUpperCase().slice(0, 3) + '-' + Math.floor(100 + Math.random() * 900);
+    try {
+      const res = await authAPI.cadastroInstrutor({ nome, email, senha, cref, telefone });
+      const { token, user: u } = res.data;
+      await SecureStore.setItemAsync('camisfit_token', token);
       setUser({
-        id: 'i-new', nome, email, role: 'instrutor',
-        cref, codigoConvite: codigo,
-        avatarInitials: nome.slice(0, 2).toUpperCase(),
-      }, 'token-novo');
+        id: u.id,
+        nome: u.nome,
+        email: u.email,
+        role: 'instrutor',
+        cref: u.cref,
+        codigoConvite: u.codigo_convite,
+        avatarInitials: u.nome.slice(0, 2).toUpperCase(),
+      }, token);
+    } catch (err: any) {
+      Alert.alert('Erro ao cadastrar', err.response?.data?.erro || 'Tente novamente.');
+    } finally {
       setLoading(false);
-    }, 1200);
+    }
   };
 
   return (
@@ -170,16 +188,29 @@ export const LoginAlunoScreen = ({ navigation }: any) => {
   const handleLogin = async () => {
     if (!email || !senha) { Alert.alert('Preencha todos os campos'); return; }
     setLoading(true);
-    setTimeout(() => {
+    try {
+      const res = await authAPI.loginAluno(email, senha);
+      const { token, user: u } = res.data;
+      await SecureStore.setItemAsync('camisfit_token', token);
       setUser({
-        id: 'a1', nome: 'Rafael Silva', email,
-        role: 'aluno', instrutorId: 'i1',
-        instrutorNome: 'Prof. Ana Beatriz',
-        nivel: 7, xp: 620, peso: 78, altura: 175,
-        objetivo: 'Hipertrofia', avatarInitials: 'RS',
-      }, 'demo-token-aluno');
+        id: u.id,
+        nome: u.nome,
+        email: u.email,
+        role: 'aluno',
+        instrutorId: u.instrutor_id,
+        instrutorNome: u.instrutor_nome,
+        nivel: u.nivel_gamif,
+        xp: u.xp,
+        peso: u.peso,
+        altura: u.altura,
+        objetivo: u.objetivo,
+        avatarInitials: u.avatar_initials,
+      }, token);
+    } catch (err: any) {
+      Alert.alert('Erro ao entrar', err.response?.data?.erro || 'Verifique suas credenciais e tente novamente.');
+    } finally {
       setLoading(false);
-    }, 1000);
+    }
   };
 
   return (
@@ -229,19 +260,38 @@ export const CadastroAlunoScreen = ({ navigation }: any) => {
 
   const objetivos = ['Hipertrofia', 'Emagrecimento', 'Definição', 'Manutenção', 'Saúde geral'];
 
-  const handleCadastro = () => {
+  const handleCadastro = async () => {
     if (!nome || !email || !senha || !codigo) { Alert.alert('Preencha todos os campos'); return; }
     setLoading(true);
-    // Replace with: authAPI.cadastroAluno({ nome, email, senha, codigoInstrutor: codigo, peso: +peso, altura: +altura })
-    setTimeout(() => {
+    try {
+      const res = await authAPI.cadastroAluno({
+        nome, email, senha,
+        codigoInstrutor: codigo,
+        peso: +peso || 70,
+        altura: +altura || 170,
+        objetivo,
+      });
+      const { token, user: u } = res.data;
+      await SecureStore.setItemAsync('camisfit_token', token);
       setUser({
-        id: 'a-new', nome, email, role: 'aluno',
-        instrutorId: 'i1', instrutorNome: 'Prof. Ana Beatriz',
-        nivel: 1, xp: 0, peso: +peso || 70, altura: +altura || 170,
-        objetivo, avatarInitials: nome.slice(0, 2).toUpperCase(),
-      }, 'token-novo-aluno');
+        id: u.id,
+        nome: u.nome,
+        email: u.email,
+        role: 'aluno',
+        instrutorId: u.instrutor_id,
+        instrutorNome: u.instrutor_nome,
+        nivel: u.nivel_gamif || 1,
+        xp: u.xp || 0,
+        peso: u.peso,
+        altura: u.altura,
+        objetivo,
+        avatarInitials: u.avatar_initials,
+      }, token);
+    } catch (err: any) {
+      Alert.alert('Erro ao cadastrar', err.response?.data?.erro || 'Tente novamente.');
+    } finally {
       setLoading(false);
-    }, 1200);
+    }
   };
 
   return (

@@ -1,5 +1,5 @@
 // api/aluno/[...route].js
-// Camis FIT - Rotas do Aluno
+// Camis FIT — Rotas do Aluno (PostgreSQL)
 
 const DB = require('../../lib/db');
 const { autenticar, handler, semSenha } = require('../../lib/auth');
@@ -15,13 +15,17 @@ module.exports = handler(async (req, res) => {
   const body = req.body || {};
   const aluno_id = user.id;
 
-  // ── GET /aluno/perfil ───────────────────
+  // ── GET /aluno/perfil ───────────────────────
   if (url === 'perfil' && method === 'GET') {
-    const aluno = DB.findAlunoById(aluno_id);
-    const instrutor = DB.findInstrutorById(aluno.instrutor_id);
-    const evolucao = DB.findEvolucaoByAluno(aluno_id);
-    const faturas = DB.findFaturasByAluno(aluno_id);
-    const treinos_total = 47; // Em produção: buscar do banco
+    const [aluno, evolucao, faturas, treinos_total] = await Promise.all([
+      DB.findAlunoById(aluno_id),
+      DB.findEvolucaoByAluno(aluno_id),
+      DB.findFaturasByAluno(aluno_id),
+      DB.contarSessoesAluno(aluno_id),
+    ]);
+    if (!aluno) return res.status(404).json({ erro: 'Aluno não encontrado' });
+
+    const instrutor = await DB.findInstrutorById(aluno.instrutor_id);
 
     return res.status(200).json({
       ...semSenha(aluno),
@@ -31,63 +35,74 @@ module.exports = handler(async (req, res) => {
       stats: {
         treinos_total,
         peso_atual: aluno.peso,
-        evolucao_peso: evolucao.length > 1 ? (evolucao[evolucao.length - 1].peso - evolucao[0].peso).toFixed(1) : 0,
+        evolucao_peso: evolucao.length > 1
+          ? (parseFloat(evolucao[evolucao.length - 1].peso) - parseFloat(evolucao[0].peso)).toFixed(1)
+          : 0,
         faturas_pendentes: faturas.filter(f => f.status !== 'pago').length,
-      }
+      },
     });
   }
 
-  // ── PUT /aluno/perfil ───────────────────
+  // ── PUT /aluno/perfil ───────────────────────
   if (url === 'perfil' && method === 'PUT') {
     const { nome, peso, altura, objetivo, nivel_treino } = body;
-    const atualizado = DB.updateAluno(aluno_id, { nome, peso, altura, objetivo, nivel_treino });
+    const atualizado = await DB.updateAluno(aluno_id, { nome, peso, altura, objetivo, nivel_treino });
     return res.status(200).json(semSenha(atualizado));
   }
 
-  // ── GET /aluno/treinos ──────────────────
+  // ── GET /aluno/treinos ──────────────────────
   if (url === 'treinos' && method === 'GET') {
-    const treinos = DB.findFichasByAluno(aluno_id);
+    const treinos = await DB.findFichasByAluno(aluno_id);
     return res.status(200).json(treinos);
   }
 
-  // ── GET /aluno/treinos/:id ──────────────
+  // ── GET /aluno/treinos/:id ──────────────────
   if (url.startsWith('treinos/') && !url.includes('/iniciar') && !url.includes('/finalizar') && method === 'GET') {
     const id = url.split('/')[1];
-    const ficha = DB.findFichaById(id);
+    const ficha = await DB.findFichaById(id);
     if (!ficha) return res.status(404).json({ erro: 'Treino não encontrado' });
     return res.status(200).json(ficha);
   }
 
-  // ── POST /aluno/treinos/:id/iniciar ─────
+  // ── POST /aluno/treinos/:id/iniciar ─────────
   if (url.includes('/iniciar') && method === 'POST') {
+    const ficha_id = url.split('/')[1];
+    const sessao = await DB.createSessao(aluno_id, ficha_id);
     return res.status(200).json({
-      sessao_id: `sess-${Date.now()}`,
-      iniciado_em: new Date().toISOString(),
-      mensagem: 'Bora! Camila está torcendo por você! 💪'
+      sessao_id: sessao.id,
+      iniciado_em: sessao.iniciado_em,
+      mensagem: 'Bora! Camila está torcendo por você! 💪',
     });
   }
 
-  // ── POST /aluno/treinos/:id/finalizar ───
+  // ── POST /aluno/treinos/:id/finalizar ───────
   if (url.includes('/finalizar') && method === 'POST') {
     const xp_ganho = 50;
-    DB.updateAluno(aluno_id, {
-      xp: (DB.findAlunoById(aluno_id).xp || 0) + xp_ganho,
-    });
+    const { sessao_id } = body;
+
+    await DB.incrementarXP(aluno_id, xp_ganho);
+
+    if (sessao_id) {
+      await DB.finalizarSessao(sessao_id, xp_ganho).catch(() => {});
+    }
+
     return res.status(200).json({
       xp_ganho,
       mensagem: `Treino finalizado! +${xp_ganho} XP ganhos! 🔥`,
     });
   }
 
-  // ── POST /aluno/evolucao ────────────────
+  // ── POST /aluno/evolucao ────────────────────
   if (url === 'evolucao' && method === 'POST') {
     const { peso, gordura, observacao } = body;
     if (!peso) return res.status(400).json({ erro: 'Peso obrigatório' });
 
-    // Atualizar peso do aluno
-    DB.updateAluno(aluno_id, { peso: parseFloat(peso), percentual_gordura: gordura || null });
+    await DB.updateAluno(aluno_id, {
+      peso: parseFloat(peso),
+      percentual_gordura: gordura ? parseFloat(gordura) : undefined,
+    });
 
-    const nova = DB.createEvolucao({
+    const nova = await DB.createEvolucao({
       aluno_id,
       data: new Date().toISOString().split('T')[0],
       peso: parseFloat(peso),
@@ -98,27 +113,26 @@ module.exports = handler(async (req, res) => {
     return res.status(201).json(nova);
   }
 
-  // ── GET /aluno/evolucao ─────────────────
+  // ── GET /aluno/evolucao ─────────────────────
   if (url === 'evolucao' && method === 'GET') {
-    const evolucao = DB.findEvolucaoByAluno(aluno_id);
+    const evolucao = await DB.findEvolucaoByAluno(aluno_id);
     return res.status(200).json(evolucao);
   }
 
-  // ── GET /aluno/faturas ──────────────────
+  // ── GET /aluno/faturas ──────────────────────
   if (url === 'faturas' && method === 'GET') {
-    const faturas = DB.findFaturasByAluno(aluno_id);
+    const faturas = await DB.findFaturasByAluno(aluno_id);
     return res.status(200).json(faturas);
   }
 
-  // ── POST /aluno/faturas/:id/pagar ───────
+  // ── POST /aluno/faturas/:id/pagar ───────────
   if (url.includes('/pagar') && method === 'POST') {
     const id = url.split('/')[1];
     const { metodo_pagamento } = body;
 
-    // Em produção: integrar Mercado Pago / Stripe
     const qr_code_pix = `00020126580014BR.GOV.BCB.PIX0136camisfitpix@email.com5204000053039865802BR5925Camis FIT6009SAO PAULO62070503***6304ABCD`;
 
-    const atualizada = DB.updateFatura(id, {
+    const atualizada = await DB.updateFatura(id, {
       status: 'pago',
       pago_em: new Date().toISOString(),
       metodo_pag: metodo_pagamento || 'pix',
@@ -132,12 +146,12 @@ module.exports = handler(async (req, res) => {
     });
   }
 
-  // ── POST /aluno/vincular-instrutor ──────
+  // ── POST /aluno/vincular-instrutor ──────────
   if (url === 'vincular-instrutor' && method === 'POST') {
     const { codigo } = body;
-    const instrutor = DB.findInstrutorByCodigo(codigo);
+    const instrutor = await DB.findInstrutorByCodigo(codigo);
     if (!instrutor) return res.status(404).json({ erro: 'Código inválido' });
-    DB.updateAluno(aluno_id, { instrutor_id: instrutor.id });
+    await DB.updateAluno(aluno_id, { instrutor_id: instrutor.id });
     return res.status(200).json({ mensagem: 'Vinculado com sucesso!', instrutor_nome: instrutor.nome });
   }
 

@@ -1,0 +1,27 @@
+{
+  "expo": {
+    "name": "CamisFIT",
+    "slug": "camis-fit",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "dark",
+    "assetBundlePatterns": ["**/*"],
+    "ios": {
+      "supportsTablet": false,
+      "bundleIdentifier": "com.camisfit.app"
+    },
+    "android": {
+      "package": "com.camisfit.app",
+      "adaptiveIcon": {
+        "backgroundColor": "#07090d"
+      }
+    },
+    "plugins": [
+      "expo-secure-store",
+      "expo-notifications"
+    ],
+    "extra": {
+      "apiUrl": "https://camis-fit.vercel.app/api"
+    }
+  }
+}

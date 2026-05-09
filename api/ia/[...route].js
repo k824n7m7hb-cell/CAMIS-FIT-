@@ -1,5 +1,5 @@
 // api/ia/[...route].js
-// Camis FIT - Camila IA (powered by Claude)
+// Camis FIT — Camila IA (Claude + PostgreSQL)
 
 const Anthropic = require('@anthropic-ai/sdk');
 const DB = require('../../lib/db');
@@ -7,7 +7,6 @@ const { autenticar, handler } = require('../../lib/auth');
 
 const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
-// System prompt da Camila
 const CAMILA_SYSTEM = `Você é a Camila, coach de fitness e nutrição do app Camis FIT.
 Você é uma mulher especialista, motivadora, empática e muito prestativa.
 Responda sempre em português brasileiro, de forma animada e acolhedora.
@@ -15,7 +14,7 @@ Use emojis moderadamente para tornar as respostas mais vivas.
 
 Suas especialidades:
 - Treinos de musculação, funcional e cardio
-- Nutrição esportiva e dietas personalizadas  
+- Nutrição esportiva e dietas personalizadas
 - Periodização de treinos
 - Suplementação esportiva
 - Recuperação muscular e descanso
@@ -33,43 +32,42 @@ module.exports = handler(async (req, res) => {
   const method = req.method;
   const body = req.body || {};
 
-  // ── POST /ia/camila/chat ────────────────
+  // ── POST /ia/camila/chat ────────────────────
   if (url === 'camila/chat' && method === 'POST') {
-    const { mensagem, contexto } = body;
+    const { mensagem } = body;
     if (!mensagem) return res.status(400).json({ erro: 'Mensagem obrigatória' });
 
-    // Buscar dados do aluno para contexto
-    let alunoCtx = '';
+    let systemCtx = CAMILA_SYSTEM;
     if (user.role === 'aluno') {
-      const aluno = DB.findAlunoById(user.id);
+      const aluno = await DB.findAlunoById(user.id);
       if (aluno) {
-        alunoCtx = `\nContexto do aluno: Nome: ${aluno.nome}, Peso: ${aluno.peso}kg, Objetivo: ${aluno.objetivo}, Nível: ${aluno.nivel_treino}`;
+        systemCtx += `\n\nContexto do aluno: Nome: ${aluno.nome}, Peso: ${aluno.peso}kg, Objetivo: ${aluno.objetivo}, Nível: ${aluno.nivel_treino}`;
       }
     }
 
-    // Buscar histórico do chat
-    const historico = DB.getHistoricoChat(user.id, 6);
+    const historico = await DB.getHistoricoChat(user.id, 6);
     const messages = [
       ...historico.map(m => ({
         role: m.remetente === 'camila' ? 'assistant' : 'user',
         content: m.conteudo,
       })),
-      { role: 'user', content: mensagem }
+      { role: 'user', content: mensagem },
     ];
 
     try {
       const response = await client.messages.create({
-        model: 'claude-sonnet-4-20250514',
+        model: 'claude-sonnet-4-6',
         max_tokens: 400,
-        system: CAMILA_SYSTEM + alunoCtx,
+        system: systemCtx,
         messages,
       });
 
       const resposta = response.content[0].text;
 
-      // Salvar no histórico
-      DB.saveMensagem({ aluno_id: user.id, remetente: 'usuario', conteudo: mensagem });
-      DB.saveMensagem({ aluno_id: user.id, remetente: 'camila', conteudo: resposta });
+      await Promise.all([
+        DB.saveMensagem({ aluno_id: user.id, remetente: 'usuario', conteudo: mensagem }),
+        DB.saveMensagem({ aluno_id: user.id, remetente: 'camila', conteudo: resposta }),
+      ]);
 
       return res.status(200).json({ resposta });
     } catch (err) {
@@ -78,13 +76,13 @@ module.exports = handler(async (req, res) => {
     }
   }
 
-  // ── POST /ia/treino/gerar ───────────────
+  // ── POST /ia/treino/gerar ───────────────────
   if (url === 'treino/gerar' && method === 'POST') {
     const { nivel, objetivo, dias_semana, grupos_musculares } = body;
 
     const prompt = `Crie uma ficha de treino completa em JSON para:
 - Nível: ${nivel || 'intermediario'}
-- Objetivo: ${objetivo || 'hipertrofia'}  
+- Objetivo: ${objetivo || 'hipertrofia'}
 - Dias por semana: ${dias_semana || 3}
 - Grupos musculares: ${grupos_musculares?.join(', ') || 'corpo todo'}
 
@@ -92,7 +90,7 @@ Responda APENAS com JSON válido no formato:
 {
   "titulo": "Nome do treino",
   "descricao": "Descrição breve",
-  "nivel": "${nivel}",
+  "nivel": "${nivel || 'intermediario'}",
   "duracao_min": 50,
   "exercicios": [
     {
@@ -108,8 +106,8 @@ Responda APENAS com JSON válido no formato:
 
     try {
       const response = await client.messages.create({
-        model: 'claude-sonnet-4-20250514',
-        max_tokens: 1000,
+        model: 'claude-sonnet-4-6',
+        max_tokens: 1200,
         messages: [{ role: 'user', content: prompt }],
       });
 
@@ -124,7 +122,7 @@ Responda APENAS com JSON válido no formato:
     }
   }
 
-  // ── POST /ia/dieta/gerar ────────────────
+  // ── POST /ia/dieta/gerar ────────────────────
   if (url === 'dieta/gerar' && method === 'POST') {
     const { peso, altura, objetivo, rotina, orcamento, restricoes } = body;
 
@@ -154,8 +152,8 @@ Responda APENAS com JSON válido:
 
     try {
       const response = await client.messages.create({
-        model: 'claude-sonnet-4-20250514',
-        max_tokens: 1000,
+        model: 'claude-sonnet-4-6',
+        max_tokens: 1200,
         messages: [{ role: 'user', content: prompt }],
       });
 
@@ -170,9 +168,8 @@ Responda APENAS com JSON válido:
     }
   }
 
-  // ── POST /ia/scanner/alimento ───────────
+  // ── POST /ia/scanner/alimento ───────────────
   if (url === 'scanner/alimento' && method === 'POST') {
-    // Em produção: analisar imagem com visão computacional
     return res.status(200).json({
       alimento: 'Frango grelhado',
       porcao: '100g',
@@ -180,7 +177,7 @@ Responda APENAS com JSON válido:
       proteina_g: 31,
       carboidrato_g: 0,
       gordura_g: 3.6,
-      mensagem: 'Scanner de alimentos em desenvolvimento. Por enquanto use busca manual.',
+      mensagem: 'Scanner de alimentos em desenvolvimento.',
     });
   }
 

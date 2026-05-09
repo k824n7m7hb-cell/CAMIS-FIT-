@@ -49,14 +49,20 @@ export const authAPI = {
 
   cadastroAluno: (data: {
     nome: string; email: string; senha: string;
-    codigoInstrutor: string; peso?: number; altura?: number;
-  }) => api.post('/auth/aluno/cadastro', data),
+    codigoInstrutor: string; peso?: number; altura?: number; objetivo?: string;
+  }) => {
+    const { codigoInstrutor, ...rest } = data;
+    return api.post('/auth/aluno/cadastro', { ...rest, codigo_instrutor: codigoInstrutor });
+  },
 
   validarCodigo: (codigo: string) =>
     api.post('/auth/validar-codigo', { codigo }),
 
   esqueciSenha: (email: string) =>
     api.post('/auth/esqueci-senha', { email }),
+
+  me: () =>
+    api.get('/auth/me'),
 };
 
 // ── Instrutor ──────────────────────────

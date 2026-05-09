@@ -1,11 +1,10 @@
 // api/instrutor/[...route].js
-// Camis FIT - Rotas do Instrutor
+// Camis FIT — Rotas do Instrutor (PostgreSQL)
 
 const DB = require('../../lib/db');
 const { autenticar, handler, semSenha } = require('../../lib/auth');
 
 module.exports = handler(async (req, res) => {
-  // Autenticar
   const user = autenticar(req);
   if (!user || user.role !== 'instrutor') {
     return res.status(401).json({ erro: 'Não autorizado' });
@@ -16,12 +15,14 @@ module.exports = handler(async (req, res) => {
   const body = req.body || {};
   const instrutor_id = user.id;
 
-  // ── GET /instrutor/painel ───────────────
+  // ── GET /instrutor/painel ───────────────────
   if (url === 'painel' && method === 'GET') {
-    const alunos = DB.findAlunosByInstrutor(instrutor_id);
-    const faturas = DB.findFaturasByInstrutor(instrutor_id);
-    const total_recebido = faturas.filter(f => f.status === 'pago').reduce((s, f) => s + f.valor, 0);
-    const total_pendente = faturas.filter(f => f.status !== 'pago').reduce((s, f) => s + f.valor, 0);
+    const [alunos, faturas] = await Promise.all([
+      DB.findAlunosByInstrutor(instrutor_id),
+      DB.findFaturasByInstrutor(instrutor_id),
+    ]);
+    const total_recebido = faturas.filter(f => f.status === 'pago').reduce((s, f) => s + parseFloat(f.valor), 0);
+    const total_pendente = faturas.filter(f => f.status !== 'pago').reduce((s, f) => s + parseFloat(f.valor), 0);
 
     return res.status(200).json({
       alunos_ativos: alunos.filter(a => a.ativo).length,
@@ -32,143 +33,165 @@ module.exports = handler(async (req, res) => {
     });
   }
 
-  // ── GET /instrutor/alunos ───────────────
+  // ── GET /instrutor/alunos ───────────────────
   if (url === 'alunos' && method === 'GET') {
-    const alunos = DB.findAlunosByInstrutor(instrutor_id).map(semSenha);
-    return res.status(200).json(alunos);
+    const alunos = await DB.findAlunosByInstrutor(instrutor_id);
+    return res.status(200).json(alunos.map(semSenha));
   }
 
-  // ── GET /instrutor/alunos/:id ───────────
-  if (url.startsWith('alunos/') && method === 'GET') {
-    const id = url.split('/')[1];
-    if (id === 'liberar') return; // será tratado abaixo
-    const aluno = DB.findAlunoById(id);
-    if (!aluno || aluno.instrutor_id !== instrutor_id) return res.status(404).json({ erro: 'Aluno não encontrado' });
-    const evolucao = DB.findEvolucaoByAluno(id);
-    const treinos = DB.findFichasByAluno(id);
-    return res.status(200).json({ ...semSenha(aluno), evolucao, treinos });
-  }
-
-  // ── POST /instrutor/alunos/liberar ──────
+  // ── POST /instrutor/alunos/liberar ──────────
   if (url === 'alunos/liberar' && method === 'POST') {
     const { email } = body;
-    const aluno = DB.findAluno(a => a.email === email);
+    if (!email) return res.status(400).json({ erro: 'Email obrigatório' });
+    const aluno = await DB.findAlunoByEmail(email);
     if (!aluno) return res.status(404).json({ erro: 'Aluno não encontrado com este email' });
-    DB.updateAluno(aluno.id, { instrutor_id, ativo: true });
+    await DB.updateAluno(aluno.id, { instrutor_id, ativo: true });
     return res.status(200).json({ mensagem: `Acesso liberado para ${aluno.nome}` });
   }
 
-  // ── PATCH /instrutor/alunos/:id/bloquear
+  // ── GET /instrutor/alunos/:id ───────────────
+  if (url.startsWith('alunos/') && method === 'GET') {
+    const id = url.split('/')[1];
+    if (id === 'liberar') return res.status(404).json({ erro: 'Rota não encontrada' });
+    const [aluno, evolucao, treinos] = await Promise.all([
+      DB.findAlunoById(id),
+      DB.findEvolucaoByAluno(id),
+      DB.findFichasByAluno(id),
+    ]);
+    if (!aluno || aluno.instrutor_id !== instrutor_id) {
+      return res.status(404).json({ erro: 'Aluno não encontrado' });
+    }
+    return res.status(200).json({ ...semSenha(aluno), evolucao, treinos });
+  }
+
+  // ── PATCH /instrutor/alunos/:id/bloquear ────
   if (url.includes('/bloquear') && method === 'PATCH') {
     const id = url.split('/')[1];
-    DB.updateAluno(id, { ativo: false });
+    await DB.updateAluno(id, { ativo: false });
     return res.status(200).json({ mensagem: 'Aluno bloqueado' });
   }
 
-  // ── PATCH /instrutor/alunos/:id/desbloquear
+  // ── PATCH /instrutor/alunos/:id/desbloquear ─
   if (url.includes('/desbloquear') && method === 'PATCH') {
     const id = url.split('/')[1];
-    DB.updateAluno(id, { ativo: true });
+    await DB.updateAluno(id, { ativo: true });
     return res.status(200).json({ mensagem: 'Aluno desbloqueado' });
   }
 
-  // ── POST /instrutor/codigo/gerar ────────
+  // ── POST /instrutor/codigo/gerar ────────────
   if (url === 'codigo/gerar' && method === 'POST') {
-    const instrutor = DB.findInstrutorById(instrutor_id);
+    const instrutor = await DB.findInstrutorById(instrutor_id);
     const codigo = DB.gerarCodigo(instrutor.nome);
-    DB.updateInstrutor(instrutor_id, { codigo_convite: codigo });
+    await DB.updateInstrutor(instrutor_id, { codigo_convite: codigo });
     return res.status(200).json({ codigo });
   }
 
-  // ── GET /instrutor/fichas ───────────────
+  // ── GET /instrutor/fichas ───────────────────
   if (url === 'fichas' && method === 'GET') {
-    const fichas = DB.findFichasByInstrutor(instrutor_id);
+    const fichas = await DB.findFichasByInstrutor(instrutor_id);
     return res.status(200).json(fichas);
   }
 
-  // ── POST /instrutor/fichas ──────────────
+  // ── POST /instrutor/fichas ──────────────────
   if (url === 'fichas' && method === 'POST') {
     const { titulo, descricao, nivel, duracao_min, exercicios } = body;
     if (!titulo) return res.status(400).json({ erro: 'Título obrigatório' });
-    const nova = DB.createFicha({ instrutor_id, titulo, descricao, nivel, duracao_min, exercicios: exercicios || [] });
+    const nova = await DB.createFicha({ instrutor_id, titulo, descricao, nivel, duracao_min, exercicios: exercicios || [] });
     return res.status(201).json(nova);
   }
 
-  // ── PUT /instrutor/fichas/:id ───────────
+  // ── PUT /instrutor/fichas/:id ───────────────
   if (url.startsWith('fichas/') && !url.includes('/enviar') && method === 'PUT') {
     const id = url.split('/')[1];
-    const ficha = DB.findFichaById(id);
-    if (!ficha || ficha.instrutor_id !== instrutor_id) return res.status(404).json({ erro: 'Ficha não encontrada' });
-    const atualizada = DB.updateFicha(id, body);
+    const ficha = await DB.findFichaById(id);
+    if (!ficha || ficha.instrutor_id !== instrutor_id) {
+      return res.status(404).json({ erro: 'Ficha não encontrada' });
+    }
+    const atualizada = await DB.updateFicha(id, body);
     return res.status(200).json(atualizada);
   }
 
-  // ── DELETE /instrutor/fichas/:id ────────
-  if (url.startsWith('fichas/') && method === 'DELETE') {
+  // ── DELETE /instrutor/fichas/:id ────────────
+  if (url.startsWith('fichas/') && !url.includes('/enviar') && method === 'DELETE') {
     const id = url.split('/')[1];
-    DB.deleteFicha(id);
+    await DB.deleteFicha(id);
     return res.status(200).json({ mensagem: 'Ficha removida' });
   }
 
-  // ── POST /instrutor/fichas/:id/enviar ───
+  // ── POST /instrutor/fichas/:id/enviar ───────
   if (url.includes('/enviar') && method === 'POST') {
     const fichaId = url.split('/')[1];
     const { alunoId } = body;
-    const ficha = DB.findFichaById(fichaId);
-    if (!ficha) return res.status(404).json({ erro: 'Ficha não encontrada' });
-    if (!ficha.alunos_vinculados.includes(alunoId)) {
-      ficha.alunos_vinculados.push(alunoId);
-      DB.updateFicha(fichaId, { alunos_vinculados: ficha.alunos_vinculados });
+    if (!alunoId) return res.status(400).json({ erro: 'alunoId obrigatório' });
+    const ficha = await DB.findFichaById(fichaId);
+    if (!ficha || ficha.instrutor_id !== instrutor_id) {
+      return res.status(404).json({ erro: 'Ficha não encontrada' });
     }
+    await DB.vincularFichaAluno(fichaId, alunoId);
+
+    // Criar notificação para o aluno
+    await DB.createNotificacao({
+      aluno_id: alunoId,
+      tipo: 'treino_novo',
+      titulo: 'Novo treino disponível!',
+      corpo: `Seu instrutor enviou a ficha: ${ficha.titulo}`,
+    }).catch(() => {});
+
     return res.status(200).json({ mensagem: 'Ficha enviada para o aluno' });
   }
 
-  // ── GET /instrutor/faturas ──────────────
+  // ── GET /instrutor/faturas ──────────────────
   if (url === 'faturas' && method === 'GET') {
-    const faturas = DB.findFaturasByInstrutor(instrutor_id);
+    const faturas = await DB.findFaturasByInstrutor(instrutor_id);
     return res.status(200).json(faturas);
   }
 
-  // ── POST /instrutor/faturas ─────────────
+  // ── POST /instrutor/faturas ─────────────────
   if (url === 'faturas' && method === 'POST') {
     const { aluno_id, tipo, descricao, valor, vencimento } = body;
     if (!aluno_id || !valor) return res.status(400).json({ erro: 'Campos obrigatórios faltando' });
-    const aluno = DB.findAlunoById(aluno_id);
-    const nova = DB.createFatura({
-      instrutor_id, aluno_id,
-      aluno_nome: aluno?.nome || '',
-      tipo, descricao, valor: parseFloat(valor),
-      vencimento: vencimento || new Date(Date.now() + 7 * 86400000).toISOString().split('T')[0],
-    });
+
+    const venc = vencimento || new Date(Date.now() + 7 * 86400000).toISOString().split('T')[0];
+    const nova = await DB.createFatura({ instrutor_id, aluno_id, tipo, descricao, valor: parseFloat(valor), vencimento: venc });
+
+    // Notificar aluno
+    await DB.createNotificacao({
+      aluno_id,
+      tipo: 'fatura',
+      titulo: 'Nova cobrança gerada',
+      corpo: `${descricao || tipo} — R$ ${parseFloat(valor).toFixed(2)} · Vence em ${venc}`,
+    }).catch(() => {});
+
     return res.status(201).json(nova);
   }
 
-  // ── PATCH /instrutor/faturas/:id/pago ───
+  // ── PATCH /instrutor/faturas/:id/pago ───────
   if (url.includes('/pago') && method === 'PATCH') {
     const id = url.split('/')[1];
-    const atualizada = DB.updateFatura(id, { status: 'pago', pago_em: new Date().toISOString() });
+    const atualizada = await DB.updateFatura(id, { status: 'pago', pago_em: new Date().toISOString() });
     return res.status(200).json(atualizada);
   }
 
-  // ── GET /instrutor/financeiro/resumo ────
+  // ── GET /instrutor/financeiro/resumo ────────
   if (url === 'financeiro/resumo' && method === 'GET') {
-    const faturas = DB.findFaturasByInstrutor(instrutor_id);
-    const recebido = faturas.filter(f => f.status === 'pago').reduce((s, f) => s + f.valor, 0);
-    const pendente = faturas.filter(f => f.status === 'pendente').reduce((s, f) => s + f.valor, 0);
-    const vencido = faturas.filter(f => f.status === 'vencido').reduce((s, f) => s + f.valor, 0);
-    return res.status(200).json({ recebido, pendente, vencido, historico: faturas.slice(-10) });
+    const faturas = await DB.findFaturasByInstrutor(instrutor_id);
+    const recebido = faturas.filter(f => f.status === 'pago').reduce((s, f) => s + parseFloat(f.valor), 0);
+    const pendente = faturas.filter(f => f.status === 'pendente').reduce((s, f) => s + parseFloat(f.valor), 0);
+    const vencido  = faturas.filter(f => f.status === 'vencido').reduce((s, f) => s + parseFloat(f.valor), 0);
+    return res.status(200).json({ recebido, pendente, vencido, historico: faturas.slice(0, 10) });
   }
 
-  // ── GET /instrutor/perfil ───────────────
+  // ── GET /instrutor/perfil ───────────────────
   if (url === 'perfil' && method === 'GET') {
-    const instrutor = DB.findInstrutorById(instrutor_id);
+    const instrutor = await DB.findInstrutorById(instrutor_id);
+    if (!instrutor) return res.status(404).json({ erro: 'Instrutor não encontrado' });
     return res.status(200).json({ ...semSenha(instrutor), role: 'instrutor' });
   }
 
-  // ── PUT /instrutor/perfil ───────────────
+  // ── PUT /instrutor/perfil ───────────────────
   if (url === 'perfil' && method === 'PUT') {
     const { nome, cref, telefone, pix_chave } = body;
-    const atualizado = DB.updateInstrutor(instrutor_id, { nome, cref, telefone, pix_chave });
+    const atualizado = await DB.updateInstrutor(instrutor_id, { nome, cref, telefone, pix_chave });
     return res.status(200).json(semSenha(atualizado));
   }
 

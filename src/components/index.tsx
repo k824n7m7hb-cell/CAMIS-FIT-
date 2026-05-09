@@ -81,24 +81,24 @@ interface CardProps {
 }
 
 export const Card: React.FC<CardProps> = ({ children, neon, style, onPress }) => {
-  const Wrapper = onPress ? TouchableOpacity : View;
-  return (
-    <Wrapper
-      style={[{
-        backgroundColor: Colors.card,
-        borderRadius: Radius.xl,
-        padding: Spacing.lg,
-        borderWidth: 1,
-        borderColor: neon ? Colors.neonBorder : Colors.border,
-        marginBottom: Spacing.sm,
-        ...(neon ? Shadows.neonSm : {}),
-      }, style]}
-      onPress={onPress}
-      activeOpacity={onPress ? 0.85 : 1}
-    >
-      {children}
-    </Wrapper>
-  );
+  const cardStyle = [{
+    backgroundColor: Colors.card,
+    borderRadius: Radius.xl,
+    padding: Spacing.lg,
+    borderWidth: 1,
+    borderColor: neon ? Colors.neonBorder : Colors.border,
+    marginBottom: Spacing.sm,
+    ...(neon ? Shadows.neonSm : {}),
+  }, style];
+
+  if (onPress) {
+    return (
+      <TouchableOpacity style={cardStyle} onPress={onPress} activeOpacity={0.85}>
+        {children}
+      </TouchableOpacity>
+    );
+  }
+  return <View style={cardStyle}>{children}</View>;
 };
 
 // ── StatCard ───────────────────────────

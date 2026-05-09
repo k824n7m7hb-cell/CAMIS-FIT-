@@ -1,0 +1,27 @@
+# Expo
+.expo/
+dist/
+web-build/
+
+# Node
+node_modules/
+npm-debug.*
+*.jks
+*.p8
+*.p12
+*.key
+*.mobileprovision
+*.orig.*
+
+# Mac / Windows
+.DS_Store
+Thumbs.db
+
+# Ambiente
+.env
+.env.local
+.env.production
+.env.*.local
+
+# TypeScript
+*.tsbuildinfo

@@ -1,5 +1,5 @@
 // api/notificacoes/[...route].js
-// Camis FIT - Notificações
+// Camis FIT — Notificações (PostgreSQL)
 
 const DB = require('../../lib/db');
 const { autenticar, handler } = require('../../lib/auth');
@@ -12,41 +12,29 @@ module.exports = handler(async (req, res) => {
   const method = req.method;
   const body = req.body || {};
 
-  // ── POST /notificacoes/token ────────────
+  // ── POST /notificacoes/token ────────────────
   if (url === 'token' && method === 'POST') {
     const { token } = body;
+    if (!token) return res.status(400).json({ erro: 'Token obrigatório' });
     if (user.role === 'aluno') {
-      DB.updateAluno(user.id, { push_token: token });
+      await DB.updateAluno(user.id, { push_token: token });
     }
     return res.status(200).json({ mensagem: 'Token registrado com sucesso' });
   }
 
-  // ── GET /notificacoes ───────────────────
+  // ── GET /notificacoes ───────────────────────
   if (url === '' && method === 'GET') {
-    // Notificações mockadas — em produção buscar do banco
-    const notificacoes = [
-      {
-        id: 'n1',
-        tipo: 'treino_novo',
-        titulo: 'Novo treino disponível!',
-        corpo: 'Seu instrutor enviou uma nova ficha de treino.',
-        lida: false,
-        criado_em: new Date().toISOString(),
-      },
-      {
-        id: 'n2',
-        tipo: 'fatura',
-        titulo: 'Fatura próxima do vencimento',
-        corpo: 'Sua mensalidade vence em 3 dias.',
-        lida: false,
-        criado_em: new Date().toISOString(),
-      }
-    ];
+    if (user.role !== 'aluno') {
+      return res.status(200).json([]);
+    }
+    const notificacoes = await DB.findNotificacoesByAluno(user.id);
     return res.status(200).json(notificacoes);
   }
 
-  // ── PATCH /notificacoes/:id/lida ────────
+  // ── PATCH /notificacoes/:id/lida ────────────
   if (url.includes('/lida') && method === 'PATCH') {
+    const id = url.split('/')[0];
+    await DB.marcarNotificacaoLida(id);
     return res.status(200).json({ mensagem: 'Notificação marcada como lida' });
   }
 
