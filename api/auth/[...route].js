@@ -6,7 +6,8 @@ const DB = require('../../lib/db');
 const { gerarToken, autenticar, handler, semSenha } = require('../../lib/auth');
 
 module.exports = handler(async (req, res) => {
-  const url = req.url.replace('/api/auth/', '').replace('/api/auth', '');
+  const parts = Array.isArray(req.query.route) ? req.query.route : (req.query.route ? [req.query.route] : []);
+  const url = parts.join('/');
   const method = req.method;
   const body = req.body || {};
 

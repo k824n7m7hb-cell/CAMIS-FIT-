@@ -10,7 +10,8 @@ module.exports = handler(async (req, res) => {
     return res.status(401).json({ erro: 'Não autorizado' });
   }
 
-  const url = req.url.replace('/api/aluno/', '').replace('/api/aluno', '') || '';
+  const parts = Array.isArray(req.query.route) ? req.query.route : (req.query.route ? [req.query.route] : []);
+  const url = parts.join('/');
   const method = req.method;
   const body = req.body || {};
   const aluno_id = user.id;
