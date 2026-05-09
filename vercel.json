@@ -1,10 +1,14 @@
 {
   "version": 2,
-  "buildCommand": "npm install",
   "functions": {
     "api/**/*.js": {
-      "memory": 512,
-      "maxDuration": 30
+      "runtime": "@vercel/node"
     }
-  }
+  },
+  "routes": [
+    {
+      "src": "/api/(.*)",
+      "dest": "/api/$1"
+    }
+  ]
 }
