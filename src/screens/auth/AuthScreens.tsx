@@ -139,7 +139,11 @@ export const CadastroInstrutorScreen = ({ navigation }: any) => {
         setEtapa(2);
       }
     } catch (err: any) {
-      Alert.alert('Erro ao cadastrar', err.response?.data?.erro || 'Tente novamente.');
+      const msg = err.response?.data?.erro
+        || (err.code === 'ECONNABORTED' ? 'Tempo limite atingido. Verifique sua conexão.' : null)
+        || err.message
+        || 'Tente novamente.';
+      Alert.alert('Erro ao cadastrar', msg);
     } finally {
       setLoading(false);
     }
