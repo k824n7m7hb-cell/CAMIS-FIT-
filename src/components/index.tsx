@@ -246,3 +246,5 @@ export const Avatar: React.FC<AvatarProps> = ({ initials, color, size = 36 }) =>
     </Text>
   </View>
 );
+
+export { AppHeader } from './AppHeader';

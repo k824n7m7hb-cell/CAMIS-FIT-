@@ -25,3 +25,6 @@ Thumbs.db
 
 # TypeScript
 *.tsbuildinfo
+
+# Nested subdirectory (old SDK51 copy)
+CamisFIT/
