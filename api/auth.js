@@ -53,7 +53,6 @@ module.exports = handler(async (req, res) => {
     const senhaOk = await bcrypt.compare(senha, instrutor.senha_hash);
     if (!senhaOk) return res.status(401).json({ erro: 'Credenciais inválidas' });
     if (!instrutor.ativo) return res.status(403).json({ erro: 'Conta inativa.' });
-    if (instrutor.email_verificado === false) return res.status(403).json({ erro: 'Verifique seu email antes de fazer login. Acesse seu email e insira o código que enviamos.', emailPendente: true });
     const token = gerarToken({ id: instrutor.id, role: 'instrutor', email: instrutor.email });
     return res.status(200).json({ token, user: { ...semSenha(instrutor), role: 'instrutor' } });
   }
@@ -78,41 +77,18 @@ module.exports = handler(async (req, res) => {
     const { nome, email, senha, cref, telefone } = body;
     if (!nome || !email || !senha) return res.status(400).json({ erro: 'Campos obrigatórios faltando' });
     const existe = await DB.findInstrutorByEmail(email);
-    if (existe && existe.email_verificado !== false) return res.status(409).json({ erro: 'Email já cadastrado' });
-    if (existe && existe.email_verificado === false) {
-      // Reenviar OTP para conta não verificada
-      const codigo = gerarOTP();
-      await DB.setOTPInstrutor(existe.id, codigo);
-      await enviarEmailOTP(email, existe.nome, codigo);
-      return res.status(200).json({ emailEnviado: true, email, mensagem: 'Código reenviado para seu email.' });
+    if (existe) {
+      if (existe.email_verificado !== false) return res.status(409).json({ erro: 'Email já cadastrado' });
+      // Conta pendente: ativar e retornar token diretamente
+      await DB.ativarInstrutor(existe.id);
+      const token = gerarToken({ id: existe.id, role: 'instrutor', email: existe.email });
+      return res.status(200).json({ token, user: { ...semSenha(existe), role: 'instrutor', avatar_initials: existe.nome.slice(0, 2).toUpperCase() } });
     }
     const senha_hash = await bcrypt.hash(senha, 10);
     const codigo_convite = DB.gerarCodigo(nome);
     const novo = await DB.createInstrutor({ nome, email, senha_hash, cref: cref || '', telefone: telefone || '', pix_chave: email, codigo_convite, plano: 'free', ativo: true });
-    const codigo = gerarOTP();
-    await DB.setOTPInstrutor(novo.id, codigo);
-    await enviarEmailOTP(email, nome, codigo);
-    return res.status(201).json({ emailEnviado: true, email, mensagem: 'Código de ativação enviado para seu email.' });
-  }
-
-  if (url === 'instrutor/verificar-email' && method === 'POST') {
-    const { email, codigo } = body;
-    if (!email || !codigo) return res.status(400).json({ erro: 'Email e código obrigatórios' });
-    const instrutor = await DB.verificarOTPInstrutor(email, codigo.trim());
-    if (!instrutor) return res.status(400).json({ erro: 'Código inválido ou expirado. Solicite um novo código.' });
-    const token = gerarToken({ id: instrutor.id, role: 'instrutor', email: instrutor.email });
-    return res.status(200).json({ token, user: { ...semSenha(instrutor), role: 'instrutor', avatar_initials: instrutor.nome.slice(0, 2).toUpperCase() } });
-  }
-
-  if (url === 'instrutor/reenviar-codigo' && method === 'POST') {
-    const { email } = body;
-    if (!email) return res.status(400).json({ erro: 'Email obrigatório' });
-    const instrutor = await DB.findInstrutorNaoVerificado(email);
-    if (!instrutor) return res.status(404).json({ erro: 'Nenhuma conta pendente de verificação encontrada.' });
-    const codigo = gerarOTP();
-    await DB.setOTPInstrutor(instrutor.id, codigo);
-    await enviarEmailOTP(email, instrutor.nome, codigo);
-    return res.status(200).json({ mensagem: 'Novo código enviado para seu email.' });
+    const token = gerarToken({ id: novo.id, role: 'instrutor', email: novo.email });
+    return res.status(201).json({ token, user: { ...semSenha(novo), role: 'instrutor', avatar_initials: nome.slice(0, 2).toUpperCase() } });
   }
 
   if (url === 'aluno/cadastro' && method === 'POST') {
