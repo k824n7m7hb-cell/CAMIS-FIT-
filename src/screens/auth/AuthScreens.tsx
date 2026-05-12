@@ -2,7 +2,7 @@
 // ─────────────────────────────────────────
 // Camis FIT — Auth: Welcome · Login · Cadastro
 // ─────────────────────────────────────────
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   View, Text, ScrollView, TouchableOpacity,
   KeyboardAvoidingView, Platform, Alert, StyleSheet, Image,
@@ -14,6 +14,7 @@ import { Colors, Typography, Spacing, Radius, Shadows } from '../../theme';
 import { NeonButton, Input, Card } from '../../components';
 import { useStore } from '../../services/store';
 import { authAPI } from '../../services/api';
+import type { AuthScreenProps, AuthNavProp } from '../../types/navigation';
 
 const S = StyleSheet.create({
   screen: { flex: 1, backgroundColor: Colors.bg },
@@ -29,7 +30,7 @@ const S = StyleSheet.create({
 });
 
 // ── Welcome Screen ─────────────────────
-export const WelcomeScreen = ({ navigation }: any) => (
+export const WelcomeScreen = ({ navigation }: AuthScreenProps<'Welcome'>) => (
   <View style={[S.screen, S.center]}>
     <View style={{ marginBottom: 40, alignItems: 'center' }}>
       <View style={{ width: 70, height: 70, borderRadius: 22, backgroundColor: Colors.neonDim, borderWidth: 1.5, borderColor: Colors.neonBorder, alignItems: 'center', justifyContent: 'center', marginBottom: 16, ...Shadows.neonSm }}>
@@ -51,7 +52,7 @@ export const WelcomeScreen = ({ navigation }: any) => (
 );
 
 // ── Login Instrutor ────────────────────
-export const LoginInstrutorScreen = ({ navigation }: any) => {
+export const LoginInstrutorScreen = ({ navigation }: AuthScreenProps<'LoginInstrutor'>) => {
   const [email, setEmail] = useState('');
   const [senha, setSenha] = useState('');
   const [loading, setLoading] = useState(false);
@@ -70,11 +71,20 @@ export const LoginInstrutorScreen = ({ navigation }: any) => {
         email: u.email,
         role: 'instrutor',
         cref: u.cref,
+        pixChave: u.pix_chave,
         codigoConvite: u.codigo_convite,
         avatarInitials: u.nome.slice(0, 2).toUpperCase(),
       }, token);
     } catch (err: any) {
-      Alert.alert('Erro ao entrar', err.response?.data?.erro || 'Verifique suas credenciais e tente novamente.');
+      if (err.response?.data?.emailPendente) {
+        Alert.alert(
+          'Verifique seu email',
+          'Digite o código que enviamos para ativar sua conta.',
+          [{ text: 'Digitar código', onPress: () => navigation.navigate('CadastroInstrutor', { emailPendente: email }) }],
+        );
+      } else {
+        Alert.alert('Erro ao entrar', err.response?.data?.erro || 'Verifique suas credenciais e tente novamente.');
+      }
     } finally {
       setLoading(false);
     }
@@ -103,6 +113,15 @@ export const LoginInstrutorScreen = ({ navigation }: any) => {
               <Text style={S.link}>Cadastrar-se</Text>
             </TouchableOpacity>
           </View>
+          <TouchableOpacity
+            onPress={() => {
+              if (!email) { Alert.alert('Informe seu email', 'Digite seu email para abrir a verificação.'); return; }
+              navigation.navigate('CadastroInstrutor', { emailPendente: email });
+            }}
+            style={{ alignItems: 'center', marginTop: 14 }}
+          >
+            <Text style={S.link}>Já tenho o código do email</Text>
+          </TouchableOpacity>
         </View>
 
         <TouchableOpacity onPress={() => navigation.goBack()} style={{ marginTop: 20 }}>
@@ -114,8 +133,9 @@ export const LoginInstrutorScreen = ({ navigation }: any) => {
 };
 
 // ── Cadastro Instrutor ─────────────────
-export const CadastroInstrutorScreen = ({ navigation }: any) => {
-  const [etapa, setEtapa] = useState<1 | 2>(1);
+export const CadastroInstrutorScreen = ({ navigation, route }: AuthScreenProps<'CadastroInstrutor'>) => {
+  const emailParam = route.params?.emailPendente || '';
+  const [etapa, setEtapa] = useState<1 | 2>(emailParam ? 2 : 1);
   const [nome, setNome] = useState('');
   const [email, setEmail] = useState('');
   const [senha, setSenha] = useState('');
@@ -123,10 +143,18 @@ export const CadastroInstrutorScreen = ({ navigation }: any) => {
   const [cref, setCref] = useState('');
   const [telefone, setTelefone] = useState('');
   const [codigo, setCodigo] = useState('');
-  const [emailPendente, setEmailPendente] = useState('');
+  const [emailPendente, setEmailPendente] = useState(emailParam);
   const [loading, setLoading] = useState(false);
   const [loadingReenvio, setLoadingReenvio] = useState(false);
   const setUser = useStore(s => s.setUser);
+
+  useEffect(() => {
+    if (route.params?.emailPendente) {
+      setEmail(route.params.emailPendente);
+      setEmailPendente(route.params.emailPendente);
+      setEtapa(2);
+    }
+  }, [route.params?.emailPendente]);
 
   const handleCadastro = async () => {
     if (!nome || !email || !senha || !cref) { Alert.alert('Preencha todos os campos obrigatórios'); return; }
@@ -134,10 +162,9 @@ export const CadastroInstrutorScreen = ({ navigation }: any) => {
     setLoading(true);
     try {
       const res = await authAPI.cadastroInstrutor({ nome, email, senha, cref, telefone });
-      if (res.data.emailEnviado) {
-        setEmailPendente(res.data.email);
-        setEtapa(2);
-      }
+      setEmailPendente(res.data?.email || email);
+      setCodigo('');
+      setEtapa(2);
     } catch (err: any) {
       const msg = err.response?.data?.erro
         || (err.code === 'ECONNABORTED' ? 'Tempo limite atingido. Verifique sua conexão.' : null)
@@ -150,7 +177,7 @@ export const CadastroInstrutorScreen = ({ navigation }: any) => {
   };
 
   const handleVerificar = async () => {
-    if (codigo.length !== 6) { Alert.alert('Digite o código de 6 dígitos'); return; }
+    if (codigo.length !== 6) { Alert.alert('Código inválido', 'Digite exatamente 6 dígitos'); return; }
     setLoading(true);
     try {
       const res = await authAPI.verificarEmailInstrutor(emailPendente, codigo);
@@ -158,11 +185,12 @@ export const CadastroInstrutorScreen = ({ navigation }: any) => {
       await SecureStore.setItemAsync('camisfit_token', token);
       setUser({
         id: u.id, nome: u.nome, email: u.email, role: 'instrutor',
-        cref: u.cref, codigoConvite: u.codigo_convite,
+        cref: u.cref, pixChave: u.pix_chave, codigoConvite: u.codigo_convite,
         avatarInitials: u.nome.slice(0, 2).toUpperCase(),
       }, token);
     } catch (err: any) {
-      Alert.alert('Código inválido', err.response?.data?.erro || 'Verifique o código e tente novamente.');
+      const errMsg = err.response?.data?.erro || 'Verifique o código e tente novamente.';
+      Alert.alert('Código inválido ou expirado', errMsg);
     } finally {
       setLoading(false);
     }
@@ -243,6 +271,16 @@ export const CadastroInstrutorScreen = ({ navigation }: any) => {
         <Input label="Confirmar senha *" value={confirmar} onChangeText={setConfirmar} placeholder="Repita a senha" secureTextEntry />
 
         <NeonButton label="Criar conta de Instrutor" onPress={handleCadastro} loading={loading} style={{ marginTop: 8 }} />
+        <TouchableOpacity
+          onPress={() => {
+            if (!email) { Alert.alert('Informe seu email', 'Digite seu email para abrir a verificação.'); return; }
+            setEmailPendente(email);
+            setEtapa(2);
+          }}
+          style={{ alignItems: 'center', marginTop: 14 }}
+        >
+          <Text style={S.link}>Já recebi o código por email</Text>
+        </TouchableOpacity>
 
         <View style={{ flexDirection: 'row', justifyContent: 'center', marginTop: 16 }}>
           <Text style={{ color: Colors.textSub, fontSize: 12 }}>Já tem conta? </Text>
@@ -257,7 +295,7 @@ export const CadastroInstrutorScreen = ({ navigation }: any) => {
 };
 
 // ── Login Aluno ────────────────────────
-export const LoginAlunoScreen = ({ navigation }: any) => {
+export const LoginAlunoScreen = ({ navigation }: AuthScreenProps<'LoginAluno'>) => {
   const [email, setEmail] = useState('');
   const [senha, setSenha] = useState('');
   const [loading, setLoading] = useState(false);
@@ -324,7 +362,7 @@ export const LoginAlunoScreen = ({ navigation }: any) => {
 };
 
 // ── Cadastro Aluno ─────────────────────
-export const CadastroAlunoScreen = ({ navigation }: any) => {
+export const CadastroAlunoScreen = ({ navigation }: AuthScreenProps<'CadastroAluno'>) => {
   const [step, setStep] = useState<1 | 2>(1);
   const [nome, setNome] = useState('');
   const [email, setEmail] = useState('');
