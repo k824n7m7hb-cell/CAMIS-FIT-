@@ -157,21 +157,40 @@ export const CadastroInstrutorScreen = ({ navigation, route }: AuthScreenProps<'
   }, [route.params?.emailPendente]);
 
   const handleCadastro = async () => {
-    if (!nome || !email || !senha || !cref) { Alert.alert('Preencha todos os campos obrigatórios'); return; }
-    if (senha !== confirmar) { Alert.alert('As senhas não conferem'); return; }
+    console.log('[handleCadastro] Iniciado', { nome, email, senha: '***', cref });
+    if (!nome || !email || !senha || !cref) { 
+      console.log('[handleCadastro] Validação falhou: campos vazios');
+      Alert.alert('Preencha todos os campos obrigatórios'); 
+      return; 
+    }
+    if (senha !== confirmar) { 
+      console.log('[handleCadastro] Senhas não conferem');
+      Alert.alert('As senhas não conferem'); 
+      return; 
+    }
+    console.log('[handleCadastro] Validações passadas, iniciando requisição');
     setLoading(true);
     try {
+      console.log('[handleCadastro] Enviando requisição...');
       const res = await authAPI.cadastroInstrutor({ nome, email, senha, cref, telefone });
-      setEmailPendente(res.data?.email || email);
+      console.log('[Cadastro] Resposta da API:', res.status, res.data);
+      const emailToUse = res.data?.email || email;
+      console.log('[Cadastro] Email a usar:', emailToUse);
+      setEmailPendente(emailToUse);
       setCodigo('');
+      console.log('[Cadastro] Alterando etapa para 2');
       setEtapa(2);
+      console.log('[Cadastro] Etapa alterada para 2');
     } catch (err: any) {
+      console.error('[Cadastro] Erro na requisição:', err);
       const msg = err.response?.data?.erro
         || (err.code === 'ECONNABORTED' ? 'Tempo limite atingido. Verifique sua conexão.' : null)
         || err.message
         || 'Tente novamente.';
+      console.error('[Cadastro] Mensagem de erro:', msg);
       Alert.alert('Erro ao cadastrar', msg);
     } finally {
+      console.log('[Cadastro] Finally: resetando loading');
       setLoading(false);
     }
   };
@@ -274,7 +293,9 @@ export const CadastroInstrutorScreen = ({ navigation, route }: AuthScreenProps<'
         <TouchableOpacity
           onPress={() => {
             if (!email) { Alert.alert('Informe seu email', 'Digite seu email para abrir a verificação.'); return; }
+            console.log('[Debug] Pulando para etapa 2 com email:', email);
             setEmailPendente(email);
+            setCodigo('');
             setEtapa(2);
           }}
           style={{ alignItems: 'center', marginTop: 14 }}
