@@ -1,0 +1,12 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm list *)",
+      "Bash(npx tsc *)",
+      "Bash(dir \"C:\\\\Users\\\\bruno\\\\Downloads\\\\CamisFIT\\\\CamisFIT\")",
+      "Bash(git add *)",
+      "Bash(git commit -m 'Fix: npm install --legacy-peer-deps para resolver conflito de peer deps no Vercel *)",
+      "Bash(git push *)"
+    ]
+  }
+}

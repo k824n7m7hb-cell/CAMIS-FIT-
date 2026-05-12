@@ -158,40 +158,59 @@ export const CadastroInstrutorScreen = ({ navigation, route }: AuthScreenProps<'
 
   const handleCadastro = async () => {
     console.log('[handleCadastro] Iniciado', { nome, email, senha: '***', cref });
+    Alert.alert('Debug', `[1] Iniciando cadastro para ${email}`);
+    
     if (!nome || !email || !senha || !cref) { 
       console.log('[handleCadastro] Validação falhou: campos vazios');
-      Alert.alert('Preencha todos os campos obrigatórios'); 
+      Alert.alert('Erro', 'Preencha todos os campos obrigatórios'); 
       return; 
     }
     if (senha !== confirmar) { 
       console.log('[handleCadastro] Senhas não conferem');
-      Alert.alert('As senhas não conferem'); 
+      Alert.alert('Erro', 'As senhas não conferem'); 
       return; 
     }
     console.log('[handleCadastro] Validações passadas, iniciando requisição');
+    Alert.alert('Debug', '[2] Validações OK, enviando para API...');
     setLoading(true);
+    
     try {
-      console.log('[handleCadastro] Enviando requisição...');
+      console.log('[handleCadastro] Enviando requisição para:', { nome, email, cref, telefone });
       const res = await authAPI.cadastroInstrutor({ nome, email, senha, cref, telefone });
-      console.log('[Cadastro] Resposta da API:', res.status, res.data);
+      console.log('[Cadastro] Resposta recebida com status:', res.status);
+      console.log('[Cadastro] Dados da resposta:', res.data);
+      
+      Alert.alert('Debug', `[3] API respondeu com status ${res.status}\n\nDados: ${JSON.stringify(res.data)}`);
+      
       const emailToUse = res.data?.email || email;
       console.log('[Cadastro] Email a usar:', emailToUse);
+      
       setEmailPendente(emailToUse);
       setCodigo('');
-      console.log('[Cadastro] Alterando etapa para 2');
+      console.log('[Cadastro] Alterando etapa para 2...');
       setEtapa(2);
-      console.log('[Cadastro] Etapa alterada para 2');
+      
+      console.log('[Cadastro] Etapa alterada, nova etapa deveria ser 2');
+      Alert.alert('Sucesso!', 'Tela de verificação deve aparecer agora');
     } catch (err: any) {
-      console.error('[Cadastro] Erro na requisição:', err);
+      console.error('[Cadastro] Erro completo:', {
+        message: err.message,
+        code: err.code,
+        response: err.response?.status,
+        data: err.response?.data,
+      });
+      
       const msg = err.response?.data?.erro
         || (err.code === 'ECONNABORTED' ? 'Tempo limite atingido. Verifique sua conexão.' : null)
         || err.message
         || 'Tente novamente.';
-      console.error('[Cadastro] Mensagem de erro:', msg);
-      Alert.alert('Erro ao cadastrar', msg);
+      
+      console.error('[Cadastro] Mensagem de erro final:', msg);
+      Alert.alert('Erro ao cadastrar', `${msg}\n\nDetalhes: ${err.code || err.message}`);
     } finally {
       console.log('[Cadastro] Finally: resetando loading');
       setLoading(false);
+      Alert.alert('Debug', '[4] Loading setado para false');
     }
   };
 

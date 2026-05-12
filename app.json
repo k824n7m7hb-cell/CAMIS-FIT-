@@ -4,8 +4,14 @@
     "slug": "camis-fit",
     "version": "1.0.0",
     "orientation": "portrait",
+    "icon": "./assets/logo.png",
     "userInterfaceStyle": "dark",
     "assetBundlePatterns": ["**/*"],
+    "splash": {
+      "image": "./assets/splash-icon.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#0d1624"
+    },
     "ios": {
       "supportsTablet": false,
       "bundleIdentifier": "com.camisfit.app"
@@ -13,7 +19,8 @@
     "android": {
       "package": "com.camisfit.app",
       "adaptiveIcon": {
-        "backgroundColor": "#07090d"
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#0d1624"
       }
     },
     "plugins": [
@@ -21,7 +28,9 @@
       "expo-notifications"
     ],
     "extra": {
-      "apiUrl": "https://camis-fit.vercel.app/api"
+      "apiUrl": "$EXPO_PUBLIC_API_URL",
+      "supabaseUrl": "$EXPO_PUBLIC_SUPABASE_URL",
+      "supabaseAnonKey": "$EXPO_PUBLIC_SUPABASE_ANON_KEY"
     }
   }
 }

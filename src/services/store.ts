@@ -1,9 +1,8 @@
 // src/services/store.ts
-// ─────────────────────────────────────────
-// Camis FIT — Global State (Zustand)
-// ─────────────────────────────────────────
+// Estado global do CamisFIT (Zustand)
 import { create } from 'zustand';
 import * as SecureStore from 'expo-secure-store';
+import { TOKEN_KEY } from '../constants';
 
 // ── Types ──────────────────────────────
 export type UserRole = 'instrutor' | 'aluno';
@@ -13,10 +12,13 @@ export interface User {
   nome: string;
   email: string;
   role: UserRole;
-  cref?: string;            // instrutor only
-  codigoConvite?: string;   // instrutor only
-  instrutorId?: string;     // aluno only
-  instrutorNome?: string;   // aluno only
+  // Instrutor
+  cref?: string;
+  pixChave?: string;
+  codigoConvite?: string;
+  // Aluno
+  instrutorId?: string;
+  instrutorNome?: string;
   nivel?: number;
   xp?: number;
   peso?: number;
@@ -84,11 +86,18 @@ export interface Mensagem {
   timestamp: Date;
 }
 
+export interface EvolucaoEntry {
+  data: string;
+  peso: number;
+  gordura: number;
+}
+
 const mensagemBoasVindas: Mensagem = {
   id: 'm0',
   remetente: 'camila',
   timestamp: new Date(),
-  conteudo: 'Oi! Eu sou a Camila, sua coach de fitness e nutrição do Camis FIT! 💪 Estou aqui para te ajudar a alcançar seus objetivos. Como posso te ajudar hoje?',
+  conteudo:
+    'Oi! Eu sou a Camila, sua coach de fitness e nutrição do Camis FIT! 💪 Estou aqui para te ajudar a alcançar seus objetivos. Como posso te ajudar hoje?',
 };
 
 // ── Store ──────────────────────────────
@@ -97,6 +106,7 @@ interface AppState {
   user: User | null;
   token: string | null;
   isAuthenticated: boolean;
+  isLoading: boolean;
 
   // Instrutor data
   alunos: Aluno[];
@@ -106,7 +116,7 @@ interface AppState {
   // Aluno data
   treinos: FichaTreino[];
   minhasFaturas: Fatura[];
-  evolucao: { data: string; peso: number; gordura: number }[];
+  evolucao: EvolucaoEntry[];
 
   // Chat Camila
   mensagens: Mensagem[];
@@ -114,24 +124,30 @@ interface AppState {
   // Actions — Auth
   setUser: (user: User, token: string) => void;
   logout: () => void;
+  setLoading: (loading: boolean) => void;
 
   // Actions — Instrutor
+  setAlunos: (alunos: Aluno[]) => void;
   addAluno: (aluno: Aluno) => void;
   updateAluno: (id: string, data: Partial<Aluno>) => void;
+  bloquearAluno: (alunoId: string) => void;
+
+  setFichasTreino: (fichas: FichaTreino[]) => void;
   addFicha: (ficha: FichaTreino) => void;
   updateFicha: (id: string, data: Partial<FichaTreino>) => void;
   deleteFicha: (id: string) => void;
+
+  setFaturas: (faturas: Fatura[]) => void;
   addFatura: (fatura: Fatura) => void;
   marcarPago: (faturaId: string) => void;
-  bloquearAluno: (alunoId: string) => void;
 
   // Actions — Aluno
   setTreinos: (treinos: FichaTreino[]) => void;
-  setAlunos: (alunos: Aluno[]) => void;
-  setFaturas: (faturas: Fatura[]) => void;
   setMinhasFaturas: (faturas: Fatura[]) => void;
-  setEvolucao: (evolucao: { data: string; peso: number; gordura: number }[]) => void;
-  addEvolucao: (entry: { data: string; peso: number; gordura: number }) => void;
+  setEvolucao: (evolucao: EvolucaoEntry[]) => void;
+  addEvolucao: (entry: EvolucaoEntry) => void;
+
+  // Actions — Chat
   addMensagem: (msg: Mensagem) => void;
   clearMensagens: () => void;
 }
@@ -140,6 +156,7 @@ export const useStore = create<AppState>((set) => ({
   user: null,
   token: null,
   isAuthenticated: false,
+  isLoading: false,
 
   alunos: [],
   fichasTreino: [],
@@ -154,7 +171,7 @@ export const useStore = create<AppState>((set) => ({
   setUser: (user, token) => set({ user, token, isAuthenticated: true }),
 
   logout: () => {
-    SecureStore.deleteItemAsync('camisfit_token').catch(() => {});
+    SecureStore.deleteItemAsync(TOKEN_KEY).catch(() => {});
     set({
       user: null,
       token: null,
@@ -169,28 +186,39 @@ export const useStore = create<AppState>((set) => ({
     });
   },
 
+  setLoading: (isLoading) => set({ isLoading }),
+
+  setAlunos: (alunos) => set({ alunos }),
   addAluno: (aluno) => set((s) => ({ alunos: [...s.alunos, aluno] })),
-  updateAluno: (id, data) => set((s) => ({ alunos: s.alunos.map(a => a.id === id ? { ...a, ...data } : a) })),
+  updateAluno: (id, data) =>
+    set((s) => ({ alunos: s.alunos.map((a) => (a.id === id ? { ...a, ...data } : a)) })),
+  bloquearAluno: (alunoId) =>
+    set((s) => ({ alunos: s.alunos.map((a) => (a.id === alunoId ? { ...a, ativo: false } : a)) })),
 
+  setFichasTreino: (fichasTreino) => set({ fichasTreino }),
   addFicha: (ficha) => set((s) => ({ fichasTreino: [...s.fichasTreino, ficha] })),
-  updateFicha: (id, data) => set((s) => ({ fichasTreino: s.fichasTreino.map(f => f.id === id ? { ...f, ...data } : f) })),
-  deleteFicha: (id) => set((s) => ({ fichasTreino: s.fichasTreino.filter(f => f.id !== id) })),
+  updateFicha: (id, data) =>
+    set((s) => ({
+      fichasTreino: s.fichasTreino.map((f) => (f.id === id ? { ...f, ...data } : f)),
+    })),
+  deleteFicha: (id) =>
+    set((s) => ({ fichasTreino: s.fichasTreino.filter((f) => f.id !== id) })),
 
+  setFaturas: (faturas) => set({ faturas }),
   addFatura: (fatura) => set((s) => ({ faturas: [...s.faturas, fatura] })),
-  marcarPago: (faturaId) => set((s) => ({
-    faturas: s.faturas.map(f => f.id === faturaId ? { ...f, status: 'pago', pagoEm: new Date().toISOString() } : f),
-  })),
-  bloquearAluno: (alunoId) => set((s) => ({
-    alunos: s.alunos.map(a => a.id === alunoId ? { ...a, ativo: false } : a),
-  })),
+  marcarPago: (faturaId) =>
+    set((s) => ({
+      faturas: s.faturas.map((f) =>
+        f.id === faturaId ? { ...f, status: 'pago', pagoEm: new Date().toISOString() } : f,
+      ),
+    })),
 
   setTreinos: (treinos) => set({ treinos }),
-  setAlunos: (alunos) => set({ alunos }),
-  setFaturas: (faturas) => set({ faturas }),
   setMinhasFaturas: (minhasFaturas) => set({ minhasFaturas }),
   setEvolucao: (evolucao) => set({ evolucao }),
   addEvolucao: (entry) => set((s) => ({ evolucao: [...s.evolucao, entry] })),
 
   addMensagem: (msg) => set((s) => ({ mensagens: [...s.mensagens, msg] })),
-  clearMensagens: () => set({ mensagens: [{ ...mensagemBoasVindas, timestamp: new Date() }] }),
+  clearMensagens: () =>
+    set({ mensagens: [{ ...mensagemBoasVindas, timestamp: new Date() }] }),
 }));

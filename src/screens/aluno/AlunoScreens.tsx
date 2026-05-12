@@ -6,15 +6,46 @@ import React, { useState, useRef, useEffect, useCallback } from 'react';
 import {
   View, Text, ScrollView, TouchableOpacity,
   Alert, TextInput, KeyboardAvoidingView, Platform,
-  Animated, Easing,
+  Animated, Easing, ActivityIndicator,
 } from 'react-native';
+import { useFocusEffect } from '@react-navigation/native';
 import { Colors, Typography, Spacing, Radius, Shadows } from '../../theme';
 import { NeonButton, Card, StatCard, SectionTitle, Input, StatusBadge, Tag, ProgressBar, Divider, Avatar, AppHeader } from '../../components';
-import { useStore } from '../../services/store';
+import { useStore, FichaTreino, Fatura } from '../../services/store';
+import { alunoAPI } from '../../services/api';
+import { mapFicha, mapFatura } from '../../utils/mappers';
+import type { AlunoScreenProps } from '../../types/navigation';
+
+interface EvolutionEntry {
+  data: string;
+  peso: number;
+  gordura: number;
+}
 
 // ── Home Aluno ─────────────────────────
-export const AlunoHomeScreen = ({ navigation }: any) => {
-  const { user, treinos, minhasFaturas, evolucao } = useStore();
+export const AlunoHomeScreen = ({ navigation }: AlunoScreenProps<'AlunoHomeMain'>) => {
+  const { user, treinos, minhasFaturas, evolucao, setTreinos, setMinhasFaturas, setEvolucao } = useStore();
+
+  useEffect(() => {
+    const load = async () => {
+      try {
+        const [tr, ft, ev] = await Promise.all([
+          alunoAPI.getMeusTreinos(),
+          alunoAPI.getMinhasFaturas(),
+          alunoAPI.getEvolucao(),
+        ]);
+        setTreinos(tr.data.map(mapFicha));
+        setMinhasFaturas(ft.data.map(mapFatura));
+        setEvolucao(ev.data.map((e: any): EvolutionEntry => ({
+          data: (e.data || '').toString().split('T')[0],
+          peso: parseFloat(e.peso) || 0,
+          gordura: parseFloat(e.gordura) || 0,
+        })));
+      } catch {}
+    };
+    load();
+  }, []);
+
   const hoje = treinos[0];
   const progSemanal = 4;
   const totalDias = 5;
@@ -39,8 +70,8 @@ export const AlunoHomeScreen = ({ navigation }: any) => {
             <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 10 }}>
               <View style={{ flex: 1 }}>
                 <Text style={{ fontSize: 10, color: Colors.textSub, textTransform: 'uppercase', letterSpacing: 0.8, fontWeight: Typography.weights.bold }}>Treino de hoje</Text>
-                <Text style={{ fontSize: 17, fontWeight: Typography.weights.black, marginTop: 3 }}>{hoje.titulo}</Text>
-                <Text style={{ fontSize: 11, color: Colors.textSub, marginTop: 2 }}>Prof. {user?.instrutorNome} · {hoje.exercicios.length} exercícios · {hoje.duracao} min</Text>
+                <Text style={{ fontSize: 17, fontWeight: Typography.weights.black, color: Colors.text, marginTop: 3 }}>{hoje.titulo}</Text>
+                <Text style={{ fontSize: 11, color: Colors.textSub, marginTop: 2 }}>Prof. {user?.instrutorNome} · {treinos.length > 1 ? `${treinos.length} dias de treino` : `${hoje.exercicios.length} exercícios · ${hoje.duracao} min`}</Text>
               </View>
               <View style={{ backgroundColor: Colors.neonDim, borderWidth: 1.5, borderColor: Colors.neonBorder, borderRadius: 12, padding: 10 }}>
                 <Text style={{ fontSize: 20 }}>🏋️</Text>
@@ -97,7 +128,7 @@ export const AlunoHomeScreen = ({ navigation }: any) => {
               <Text style={{ fontSize: 16 }}>{n.icon}</Text>
             </View>
             <View style={{ flex: 1 }}>
-              <Text style={{ fontSize: 12, fontWeight: Typography.weights.bold }}>{n.title}</Text>
+              <Text style={{ fontSize: 12, fontWeight: Typography.weights.bold, color: Colors.text }}>{n.title}</Text>
               <Text style={{ fontSize: 11, color: Colors.textSub }}>{n.sub}</Text>
             </View>
           </View>
@@ -135,113 +166,236 @@ const RegistrarEvolucaoCard = () => {
 };
 
 // ── Tela de Treino + Cronômetro ─────────
-export const TreinoAlunoScreen = ({ navigation }: any) => {
-  const { treinos } = useStore();
-  const ficha = treinos[0];
+const ORDEM_SEMANA = ['Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta'];
+const ordenarTreinos = (ts: FichaTreino[]) =>
+  [...ts].sort((a, b) => {
+    const ai = ORDEM_SEMANA.findIndex(d => a.titulo.startsWith(d));
+    const bi = ORDEM_SEMANA.findIndex(d => b.titulo.startsWith(d));
+    return (ai === -1 ? 99 : ai) - (bi === -1 ? 99 : bi);
+  });
 
-  const [timerSecs, setTimerSecs] = useState(90);
+export const TreinoAlunoScreen = ({ navigation }: AlunoScreenProps<'TreinoAluno'>) => {
+  const { treinos, setTreinos } = useStore();
+  const [carregando, setCarregando] = useState(true);
+  const [diaAtivo, setDiaAtivo] = useState(-1);
+  const [exConcluidos, setExConcluidos] = useState<Set<string>>(new Set());
+  const treinosOrdenados = ordenarTreinos(treinos);
+
+  useFocusEffect(
+    useCallback(() => {
+      setCarregando(true);
+      setDiaAtivo(-1);
+      setExConcluidos(new Set());
+      alunoAPI.getMeusTreinos()
+        .then(r => setTreinos(r.data.map(mapFicha)))
+        .catch(() => {})
+        .finally(() => setCarregando(false));
+    }, [])
+  );
+
+  useEffect(() => { setExConcluidos(new Set()); }, [diaAtivo]);
+
+  const toggleEx = (id: string) =>
+    setExConcluidos(prev => {
+      const next = new Set(prev);
+      next.has(id) ? next.delete(id) : next.add(id);
+      return next;
+    });
+
+  const [elapsed, setElapsed] = useState(0);
   const [running, setRunning] = useState(false);
   const intervalRef = useRef<any>(null);
 
   const formatTime = (s: number) => {
-    const m = Math.floor(s / 60);
+    const h = Math.floor(s / 3600);
+    const m = Math.floor((s % 3600) / 60);
     const sec = s % 60;
+    if (h > 0) return `${h}:${String(m).padStart(2, '0')}:${String(sec).padStart(2, '0')}`;
     return `${String(m).padStart(2, '0')}:${String(sec).padStart(2, '0')}`;
   };
 
-  const toggleTimer = () => {
+  const iniciarTreino = () => {
+    clearInterval(intervalRef.current);
+    setElapsed(0);
+    setRunning(true);
+    intervalRef.current = setInterval(() => setElapsed(prev => prev + 1), 1000);
+  };
+
+  const toggleStopwatch = () => {
     if (running) {
       clearInterval(intervalRef.current);
       setRunning(false);
     } else {
+      intervalRef.current = setInterval(() => setElapsed(prev => prev + 1), 1000);
       setRunning(true);
-      intervalRef.current = setInterval(() => {
-        setTimerSecs(prev => {
-          if (prev <= 0) { clearInterval(intervalRef.current); setRunning(false); return 0; }
-          return prev - 1;
-        });
-      }, 1000);
     }
   };
 
-  const resetTimer = (s = 90) => {
+  // reset on day switch (requires new "Iniciar treino" tap)
+  useEffect(() => {
     clearInterval(intervalRef.current);
+    setElapsed(0);
     setRunning(false);
-    setTimerSecs(s);
-  };
+  }, [diaAtivo]);
 
   useEffect(() => () => clearInterval(intervalRef.current), []);
 
-  const dias = ['Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb', 'Dom'];
-  const [diaAtivo, setDiaAtivo] = useState(0);
+  if (carregando) return (
+    <View style={{ flex: 1, backgroundColor: Colors.bg, alignItems: 'center', justifyContent: 'center' }}>
+      <ActivityIndicator color={Colors.neon} size="large" />
+      <Text style={{ fontSize: 12, color: Colors.textSub, marginTop: 12 }}>Carregando treino...</Text>
+    </View>
+  );
 
-  if (!ficha) return null;
+  if (treinosOrdenados.length === 0) return (
+    <View style={{ flex: 1, backgroundColor: Colors.bg, alignItems: 'center', justifyContent: 'center', padding: 32 }}>
+      <Text style={{ fontSize: 48, marginBottom: 16 }}>🏋️</Text>
+      <Text style={{ fontSize: 16, fontWeight: Typography.weights.bold, color: Colors.text, textAlign: 'center', marginBottom: 8 }}>
+        Nenhum treino disponível
+      </Text>
+      <Text style={{ fontSize: 13, color: Colors.textSub, textAlign: 'center' }}>
+        Seu instrutor ainda não enviou uma ficha de treino para você.
+      </Text>
+    </View>
+  );
+
+  const DIA_CORES = [Colors.neon, Colors.blue, Colors.amber, Colors.purple, Colors.pink];
 
   return (
     <ScrollView style={{ flex: 1, backgroundColor: Colors.bg }} showsVerticalScrollIndicator={false}>
-      <AppHeader greeting="Segunda-feira" title={ficha.titulo.split('—')[1]?.trim() || ficha.titulo} />
-      {/* Seletor de dias */}
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ backgroundColor: Colors.card, borderBottomWidth: 1, borderBottomColor: Colors.border, paddingHorizontal: Spacing.lg, paddingBottom: 12 }}>
-        <View style={{ flexDirection: 'row', gap: 8 }}>
-          {dias.map((d, i) => (
-            <TouchableOpacity key={d} onPress={() => setDiaAtivo(i)} style={{ paddingHorizontal: 14, paddingVertical: 8, borderRadius: Radius.md, borderWidth: 1, borderColor: diaAtivo === i ? Colors.neonBorder : Colors.border, backgroundColor: diaAtivo === i ? Colors.neonDim : Colors.card2 }}>
-              <Text style={{ fontSize: 11, fontWeight: Typography.weights.bold, color: diaAtivo === i ? Colors.neon : Colors.textSub }}>{d}</Text>
-            </TouchableOpacity>
-          ))}
-        </View>
-      </ScrollView>
+      <AppHeader
+        greeting={`${treinosOrdenados.length} dias de treino`}
+        title="Programa semanal"
+      />
 
       <View style={{ padding: Spacing.lg }}>
-        {/* Cronômetro */}
-        <View style={{ backgroundColor: Colors.card, borderWidth: 1.5, borderColor: Colors.neonBorder, borderRadius: Radius.xl, padding: 20, alignItems: 'center', marginBottom: 14, ...Shadows.neonSm }}>
-          <Text style={{ fontSize: 10, color: Colors.textSub, textTransform: 'uppercase', letterSpacing: 1, fontWeight: Typography.weights.bold, marginBottom: 6 }}>
-            Descanso entre séries
-          </Text>
-          <Text style={{
-            fontSize: 56, fontWeight: Typography.weights.black,
-            color: timerSecs < 10 ? Colors.red : Colors.neon,
-            letterSpacing: 2, fontVariant: ['tabular-nums'],
-            textShadowColor: timerSecs < 10 ? Colors.red : Colors.neon,
-            textShadowOffset: { width: 0, height: 0 }, textShadowRadius: 20,
-          }}>
-            {formatTime(timerSecs)}
-          </Text>
-          <View style={{ flexDirection: 'row', gap: 10, marginTop: 14 }}>
-            <TouchableOpacity onPress={toggleTimer} style={{ paddingHorizontal: 22, paddingVertical: 11, backgroundColor: Colors.neon, borderRadius: Radius.md, flexDirection: 'row', alignItems: 'center', gap: 6, ...Shadows.neon }}>
-              <Text style={{ fontSize: 14, fontWeight: Typography.weights.black, color: '#000' }}>{running ? '⏸ Pause' : '▶ Play'}</Text>
-            </TouchableOpacity>
-            <TouchableOpacity onPress={() => resetTimer(90)} style={{ paddingHorizontal: 16, paddingVertical: 11, backgroundColor: Colors.card2, borderRadius: Radius.md, borderWidth: 1, borderColor: Colors.border }}>
-              <Text style={{ fontSize: 14, color: Colors.textMid }}>↺</Text>
-            </TouchableOpacity>
-          </View>
-          <View style={{ flexDirection: 'row', gap: 7, marginTop: 12, flexWrap: 'wrap', justifyContent: 'center' }}>
-            {[30, 60, 90, 120, 180].map(s => (
-              <TouchableOpacity key={s} onPress={() => resetTimer(s)} style={{ paddingHorizontal: 14, paddingVertical: 6, borderRadius: Radius.full, borderWidth: 1.5, borderColor: Colors.neonBorder, backgroundColor: Colors.neonDim }}>
-                <Text style={{ fontSize: 11, fontWeight: Typography.weights.bold, color: Colors.neon }}>{s < 60 ? s + 's' : s / 60 + (s % 60 ? ':' + String(s % 60).padStart(2, '0') : '') + 'min'}</Text>
+        {treinosOrdenados.map((t, i) => {
+          const aberto = diaAtivo === i;
+          const partes = t.titulo.split('–');
+          const diaNome = partes[0].trim();
+          const grupo = partes[1]?.trim() || '';
+          const cor = DIA_CORES[i % DIA_CORES.length];
+          const total = t.exercicios.length;
+          const feitos = aberto ? t.exercicios.filter(e => exConcluidos.has(e.id)).length : 0;
+          const tudo = feitos === total && total > 0;
+
+          return (
+            <View key={t.id} style={{ marginBottom: 10 }}>
+              {/* Cabeçalho do dia */}
+              <TouchableOpacity
+                activeOpacity={0.8}
+                onPress={() => setDiaAtivo(aberto ? -1 : i)}
+                style={{
+                  flexDirection: 'row', alignItems: 'center', gap: 12,
+                  backgroundColor: aberto ? Colors.card : Colors.card2,
+                  borderWidth: 1.5,
+                  borderColor: aberto ? cor + '80' : Colors.border,
+                  borderRadius: aberto ? Radius.lg : Radius.lg,
+                  borderBottomLeftRadius: aberto ? 0 : Radius.lg,
+                  borderBottomRightRadius: aberto ? 0 : Radius.lg,
+                  paddingHorizontal: 14, paddingVertical: 13,
+                }}
+              >
+                {/* Badge do dia */}
+                <View style={{ width: 40, height: 40, borderRadius: 10, backgroundColor: cor + '22', borderWidth: 1.5, borderColor: cor + '60', alignItems: 'center', justifyContent: 'center' }}>
+                  <Text style={{ fontSize: 10, fontWeight: Typography.weights.black, color: cor }}>{diaNome.slice(0, 3).toUpperCase()}</Text>
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={{ fontSize: 13, fontWeight: Typography.weights.bold, color: aberto ? Colors.text : Colors.textMid }}>{diaNome}</Text>
+                  <Text style={{ fontSize: 11, color: Colors.textSub, marginTop: 1 }}>{grupo || 'Treino do dia'} · {total} exercícios</Text>
+                </View>
+                {aberto && feitos > 0 && (
+                  <View style={{ backgroundColor: cor + '22', borderRadius: Radius.full, paddingHorizontal: 8, paddingVertical: 3 }}>
+                    <Text style={{ fontSize: 10, fontWeight: Typography.weights.bold, color: cor }}>{feitos}/{total}</Text>
+                  </View>
+                )}
+                <Text style={{ fontSize: 16, color: aberto ? cor : Colors.textSub }}>{aberto ? '▲' : '▶'}</Text>
               </TouchableOpacity>
-            ))}
-          </View>
-        </View>
 
-        {/* Exercícios */}
-        <SectionTitle title={`Exercícios · ${ficha.nivel}`} />
-        {ficha.exercicios.map((ex, i) => (
-          <View key={ex.id} style={{ backgroundColor: Colors.card, borderWidth: 1, borderColor: Colors.border, borderRadius: Radius.xl, padding: 12, marginBottom: 9, flexDirection: 'row', gap: 11, alignItems: 'center' }}>
-            {/* Animação do boneco */}
-            <StickFigure exercicio={ex.nome} />
-            <View style={{ flex: 1 }}>
-              <Text style={{ fontSize: 14, fontWeight: Typography.weights.bold, marginBottom: 3 }}>{i + 1}. {ex.nome}</Text>
-              <Text style={{ fontSize: 11, color: Colors.textSub, marginBottom: 5 }}>{ex.series} séries · {ex.repeticoes} reps{ex.descanso ? ' · ' + ex.descanso : ''}</Text>
-              {ex.observacao && <Text style={{ fontSize: 11, color: Colors.textMid, fontStyle: 'italic' }}>{ex.observacao}</Text>}
-              <View style={{ flexDirection: 'row', gap: 5, marginTop: 5 }}>
-                <Tag label={ex.grupoMuscular} color="green" />
-              </View>
+              {/* Conteúdo expandido */}
+              {aberto && (
+                <View style={{ backgroundColor: Colors.card, borderWidth: 1.5, borderTopWidth: 0, borderColor: cor + '80', borderBottomLeftRadius: Radius.lg, borderBottomRightRadius: Radius.lg, padding: 12 }}>
+
+                  {/* Cronômetro / Iniciar */}
+                  {elapsed === 0 && !running ? (
+                    <NeonButton label="▶  Iniciar treino" onPress={iniciarTreino} style={{ marginBottom: 12 }} />
+                  ) : (
+                    <TouchableOpacity
+                      onPress={toggleStopwatch}
+                      activeOpacity={0.75}
+                      style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: Colors.card2, borderRadius: Radius.md, borderWidth: 1, borderColor: Colors.border, paddingHorizontal: 14, paddingVertical: 10, marginBottom: 12 }}
+                    >
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 7 }}>
+                        <View style={{ width: 7, height: 7, borderRadius: 4, backgroundColor: running ? Colors.neon : Colors.textFaint }} />
+                        <Text style={{ fontSize: 11, color: Colors.textSub }}>Tempo de treino</Text>
+                      </View>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                        <Text style={{ fontSize: 16, fontWeight: Typography.weights.black, color: Colors.neon, fontVariant: ['tabular-nums'], letterSpacing: 1 }}>{formatTime(elapsed)}</Text>
+                        <Text style={{ fontSize: 12, color: running ? Colors.amber : Colors.textSub }}>{running ? '⏸' : '▶'}</Text>
+                      </View>
+                    </TouchableOpacity>
+                  )}
+
+                  {/* Barra de progresso */}
+                  {feitos > 0 && (
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 10 }}>
+                      <View style={{ flex: 1, height: 4, backgroundColor: Colors.card3, borderRadius: 2, overflow: 'hidden' }}>
+                        <View style={{ height: 4, width: `${(feitos / total) * 100}%` as any, backgroundColor: tudo ? Colors.neon : Colors.amber, borderRadius: 2 }} />
+                      </View>
+                      <Text style={{ fontSize: 10, fontWeight: Typography.weights.bold, color: tudo ? Colors.neon : Colors.textSub }}>{feitos}/{total} concluídos</Text>
+                    </View>
+                  )}
+
+                  {/* Lista de exercícios */}
+                  {t.exercicios.map((ex, ei) => {
+                    const done = exConcluidos.has(ex.id);
+                    return (
+                      <TouchableOpacity
+                        key={ex.id}
+                        activeOpacity={0.85}
+                        onPress={() => toggleEx(ex.id)}
+                        style={{
+                          flexDirection: 'row', alignItems: 'center', gap: 10,
+                          backgroundColor: done ? Colors.neonDim : Colors.card2,
+                          borderWidth: 1, borderColor: done ? Colors.neonBorder : Colors.border,
+                          borderRadius: Radius.md, padding: 10, marginBottom: 7,
+                          opacity: done ? 0.8 : 1,
+                        }}
+                      >
+                        <StickFigure exercicio={ex.nome} />
+                        <View style={{ flex: 1 }}>
+                          <Text style={{ fontSize: 13, fontWeight: Typography.weights.bold, color: done ? Colors.neon : Colors.text, textDecorationLine: done ? 'line-through' : 'none', marginBottom: 2 }}>
+                            {ei + 1}. {ex.nome}
+                          </Text>
+                          <Text style={{ fontSize: 11, color: Colors.textSub }}>
+                            {ex.series} séries · {ex.repeticoes} reps{ex.descanso ? ' · ' + ex.descanso : ''}
+                          </Text>
+                          {ex.observacao ? <Text style={{ fontSize: 11, color: Colors.textMid, fontStyle: 'italic', marginTop: 2 }}>{ex.observacao}</Text> : null}
+                        </View>
+                        <View style={{ width: 26, height: 26, borderRadius: 13, borderWidth: 2, borderColor: done ? Colors.neon : Colors.border, backgroundColor: done ? Colors.neon : 'transparent', alignItems: 'center', justifyContent: 'center' }}>
+                          {done && <Text style={{ fontSize: 13, color: Colors.text, fontWeight: Typography.weights.black }}>✓</Text>}
+                        </View>
+                      </TouchableOpacity>
+                    );
+                  })}
+
+                  <NeonButton
+                    label={tudo ? 'Treino concluído! 🔥' : `Finalizar · ${feitos}/${total} feitos`}
+                    onPress={() => Alert.alert(
+                      tudo ? 'Treino concluído! 🔥' : 'Finalizar mesmo assim?',
+                      tudo ? `${total} exercícios! +50 XP ganhos!` : `${feitos} de ${total} exercícios feitos.`,
+                      tudo
+                        ? [{ text: 'OK' }]
+                        : [{ text: 'Cancelar', style: 'cancel' }, { text: 'Finalizar', onPress: () => setDiaAtivo(-1) }]
+                    )}
+                    style={{ marginTop: 6 }}
+                  />
+                </View>
+              )}
             </View>
-          </View>
-        ))}
-
-        <NeonButton label="Finalizar treino" onPress={() => { Alert.alert('Treino concluído! 🔥', `${ficha.exercicios.length} exercícios completados. +50 XP ganhos!`); navigation.goBack(); }} style={{ marginTop: 4 }} />
-        <View style={{ height: 20 }} />
+          );
+        })}
+        <View style={{ height: 24 }} />
       </View>
     </ScrollView>
   );
@@ -418,7 +572,7 @@ export const FaturasAlunoScreen = () => {
         {minhasFaturas.map(fat => (
           <View key={fat.id} style={{ backgroundColor: Colors.card2, borderRadius: Radius.lg, borderWidth: 1, borderColor: fat.status === 'pendente' ? Colors.neonBorder : Colors.border, padding: 12, marginBottom: 8 }}>
             <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
-              <Text style={{ fontSize: 13, fontWeight: Typography.weights.bold }}>{fat.descricao}</Text>
+              <Text style={{ fontSize: 13, fontWeight: Typography.weights.bold, color: Colors.text }}>{fat.descricao}</Text>
               <Text style={{ fontSize: 15, fontWeight: Typography.weights.black, color: Colors.neon }}>R${fat.valor.toFixed(2).replace('.', ',')}</Text>
             </View>
             <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: fat.status !== 'pago' ? 10 : 0 }}>
@@ -470,7 +624,7 @@ export const EvolucaoAlunoScreen = () => {
         <View style={{ flexDirection: 'row', gap: 8, marginBottom: 12 }}>
           <View style={{ flex: 1, backgroundColor: Colors.card, borderRadius: Radius.lg, borderWidth: 1, borderColor: Colors.border, padding: 12, alignItems: 'center' }}>
             <Text style={{ fontSize: 10, color: Colors.textSub, textTransform: 'uppercase', marginBottom: 4 }}>Peso inicial</Text>
-            <Text style={{ fontSize: 24, fontWeight: Typography.weights.black }}>{pesoInicial}<Text style={{ fontSize: 14 }}>kg</Text></Text>
+            <Text style={{ fontSize: 24, fontWeight: Typography.weights.black, color: Colors.text }}>{pesoInicial}<Text style={{ fontSize: 14, color: Colors.text }}>kg</Text></Text>
           </View>
           <View style={{ flex: 1, backgroundColor: Colors.card, borderRadius: Radius.lg, borderWidth: 1, borderColor: Colors.neonBorder, padding: 12, alignItems: 'center', ...Shadows.neonSm }}>
             <Text style={{ fontSize: 10, color: Colors.textSub, textTransform: 'uppercase', marginBottom: 4 }}>Peso atual</Text>
@@ -482,7 +636,7 @@ export const EvolucaoAlunoScreen = () => {
         {/* Gráfico de peso simples */}
         <Card neon style={{ marginBottom: 12 }}>
           <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
-            <Text style={{ fontSize: 14, fontWeight: Typography.weights.bold }}>Evolução do peso (kg)</Text>
+            <Text style={{ fontSize: 14, fontWeight: Typography.weights.bold, color: Colors.text }}>Evolução do peso (kg)</Text>
             <View style={{ backgroundColor: Colors.neonDim, borderWidth: 1, borderColor: Colors.neonBorder, borderRadius: Radius.full, paddingHorizontal: 10, paddingVertical: 4 }}>
               <Text style={{ fontSize: 11, color: Colors.neon, fontWeight: Typography.weights.bold }}>{diff}kg</Text>
             </View>
@@ -544,7 +698,7 @@ export const PerfilAlunoScreen = () => {
         <View style={{ width: 72, height: 72, borderRadius: 36, backgroundColor: Colors.neonDim, borderWidth: 2.5, borderColor: Colors.neon, alignItems: 'center', justifyContent: 'center', marginBottom: 10, ...Shadows.neon }}>
           <Text style={{ fontSize: 28, fontWeight: Typography.weights.black, color: Colors.neon }}>{user?.avatarInitials}</Text>
         </View>
-        <Text style={{ fontSize: 18, fontWeight: Typography.weights.black }}>{user?.nome}</Text>
+        <Text style={{ fontSize: 18, fontWeight: Typography.weights.black, color: Colors.text }}>{user?.nome}</Text>
         <Text style={{ fontSize: 12, color: Colors.textSub, marginTop: 2 }}>Aluno · {user?.instrutorNome}</Text>
         <View style={{ backgroundColor: Colors.neonDim, borderWidth: 1.5, borderColor: Colors.neonBorder, borderRadius: Radius.full, paddingHorizontal: 16, paddingVertical: 5, marginTop: 8 }}>
           <Text style={{ fontSize: 11, fontWeight: Typography.weights.bold, color: Colors.neon }}>Nível {user?.nivel} · {user?.xp} XP</Text>
@@ -565,7 +719,7 @@ export const PerfilAlunoScreen = () => {
             <Text style={{ fontSize: 9, color: Colors.textSub, textTransform: 'uppercase', marginTop: 2 }}>Peso</Text>
           </View>
           <View style={{ flex: 1, backgroundColor: Colors.card, borderRadius: Radius.lg, borderWidth: 1, borderColor: Colors.border, padding: 12, alignItems: 'center' }}>
-            <Text style={{ fontSize: 18, fontWeight: Typography.weights.black }}>{user?.altura}cm</Text>
+            <Text style={{ fontSize: 18, fontWeight: Typography.weights.black, color: Colors.text }}>{user?.altura}cm</Text>
             <Text style={{ fontSize: 9, color: Colors.textSub, textTransform: 'uppercase', marginTop: 2 }}>Altura</Text>
           </View>
           <View style={{ flex: 1, backgroundColor: Colors.card, borderRadius: Radius.lg, borderWidth: 1, borderColor: Colors.neonBorder, padding: 12, alignItems: 'center', ...Shadows.neonSm }}>
@@ -580,7 +734,7 @@ export const PerfilAlunoScreen = () => {
             <Text style={{ fontSize: 16, fontWeight: Typography.weights.black, color: '#cc88ff' }}>AB</Text>
           </View>
           <View>
-            <Text style={{ fontSize: 14, fontWeight: Typography.weights.bold }}>{user?.instrutorNome}</Text>
+            <Text style={{ fontSize: 14, fontWeight: Typography.weights.bold, color: Colors.text }}>{user?.instrutorNome}</Text>
             <Text style={{ fontSize: 11, color: Colors.textSub }}>CREF 123456 · desde Jan/25</Text>
           </View>
         </View>
@@ -594,7 +748,7 @@ export const PerfilAlunoScreen = () => {
           <TouchableOpacity key={item.label} style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 13, borderBottomWidth: 1, borderBottomColor: Colors.border }}>
             <Text style={{ fontSize: 18, marginRight: 12 }}>{item.icon}</Text>
             <View style={{ flex: 1 }}>
-              <Text style={{ fontSize: 14, fontWeight: Typography.weights.medium }}>{item.label}</Text>
+              <Text style={{ fontSize: 14, fontWeight: Typography.weights.medium, color: Colors.text }}>{item.label}</Text>
               <Text style={{ fontSize: 11, color: Colors.textSub }}>{item.sub}</Text>
             </View>
             <Text style={{ color: Colors.textSub, fontSize: 16 }}>›</Text>

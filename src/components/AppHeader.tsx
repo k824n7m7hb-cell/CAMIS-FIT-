@@ -30,10 +30,10 @@ export const AppHeader = ({ greeting, title, rightContent, paddingTop = 50 }: Ap
         {greeting ? (
           <>
             <Text style={{ fontSize: 11, color: Colors.textSub }}>{greeting}</Text>
-            <Text style={{ fontSize: 20, fontWeight: Typography.weights.black }}>{title}</Text>
+            <Text style={{ fontSize: 20, fontWeight: Typography.weights.black, color: Colors.text }}>{title}</Text>
           </>
         ) : (
-          <Text style={{ fontSize: 20, fontWeight: Typography.weights.black }}>{title}</Text>
+          <Text style={{ fontSize: 20, fontWeight: Typography.weights.black, color: Colors.text }}>{title}</Text>
         )}
       </View>
     </View>

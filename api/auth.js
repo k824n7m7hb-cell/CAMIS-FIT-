@@ -2,40 +2,79 @@
 
 const bcrypt = require('bcryptjs');
 const nodemailer = require('nodemailer');
+const { Resend } = require('resend');
 const DB = require('../lib/db');
 const { gerarToken, autenticar, handler, semSenha } = require('../lib/auth');
 
 const gerarOTP = () => String(Math.floor(100000 + Math.random() * 900000));
 
+// Inicializar Resend
+const resendApiKey = process.env.RESEND_API_KEY;
+const resend = resendApiKey ? new Resend(resendApiKey) : null;
+
 const enviarEmailOTP = async (email, nome, codigo) => {
-  const user = process.env.GMAIL_USER;
-  const pass = process.env.GMAIL_APP_PASSWORD;
-  if (!user || !pass) { console.warn('[Email] GMAIL_USER ou GMAIL_APP_PASSWORD não configurados'); return false; }
   try {
-    const transporter = nodemailer.createTransport({
-      service: 'gmail',
-      auth: { user, pass },
-    });
-    await transporter.sendMail({
-      from: `"Camis FIT" <${user}>`,
-      to: email,
-      subject: `${codigo} — Seu código de ativação CamisFIT`,
-      html: `
-        <div style="font-family:Arial,sans-serif;max-width:520px;margin:0 auto;background:#0a0a0a;color:#fff;padding:40px;border-radius:14px;">
-          <h1 style="margin:0 0 4px;font-size:26px;">CAMIS<span style="color:#39ff14">FIT</span></h1>
-          <p style="color:#888;font-size:13px;margin:0 0 28px;">Plataforma de gestão fitness</p>
-          <h2 style="color:#fff;font-size:18px;margin:0 0 8px;">Ative sua conta de instrutor</h2>
-          <p style="color:#aaa;font-size:14px;">Olá, <strong style="color:#fff">${nome}</strong>! Use o código abaixo no app para confirmar seu cadastro:</p>
-          <div style="background:#111;border:2px solid #39ff14;border-radius:12px;padding:28px;text-align:center;margin:24px 0;box-shadow:0 0 24px #39ff1440;">
-            <span style="font-size:48px;font-weight:900;letter-spacing:14px;color:#39ff14;">${codigo}</span>
+    // Tenta usar Resend primeiro (mais confiável)
+    if (resend) {
+      try {
+        await resend.emails.send({
+          from: 'CamisFIT <noreply@camis-fit.com.br>',
+          to: email,
+          subject: `${codigo} — Seu código de ativação CamisFIT`,
+          html: `
+            <div style="font-family:Arial,sans-serif;max-width:520px;margin:0 auto;background:#0a0a0a;color:#fff;padding:40px;border-radius:14px;">
+              <h1 style="margin:0 0 4px;font-size:26px;">CAMIS<span style="color:#39ff14">FIT</span></h1>
+              <p style="color:#888;font-size:13px;margin:0 0 28px;">Plataforma de gestão fitness</p>
+              <h2 style="color:#fff;font-size:18px;margin:0 0 8px;">Ative sua conta de instrutor</h2>
+              <p style="color:#aaa;font-size:14px;">Olá, <strong style="color:#fff">${nome}</strong>! Use o código abaixo no app para confirmar seu cadastro:</p>
+              <div style="background:#111;border:2px solid #39ff14;border-radius:12px;padding:28px;text-align:center;margin:24px 0;box-shadow:0 0 24px #39ff1440;">
+                <span style="font-size:48px;font-weight:900;letter-spacing:14px;color:#39ff14;">${codigo}</span>
+              </div>
+              <p style="color:#666;font-size:12px;">Expira em 30 minutos. Se não foi você, ignore este email.</p>
+              <hr style="border:none;border-top:1px solid #222;margin:28px 0;">
+              <p style="color:#444;font-size:11px;margin:0;">© 2025 CamisFIT — Plataforma de gestão fitness</p>
+            </div>
+          `,
+        });
+        return true;
+      } catch (resendErr) {
+        console.warn('[Email] Erro Resend:', resendErr.message);
+      }
+    }
+
+    // Fallback para Gmail se Resend falhar ou não estiver configurado
+    const gmailUser = process.env.GMAIL_USER;
+    const gmailPass = process.env.GMAIL_APP_PASSWORD;
+    
+    if (gmailUser && gmailPass && !gmailPass.includes('xxxx')) {
+      const transporter = nodemailer.createTransport({
+        service: 'gmail',
+        auth: { user: gmailUser, pass: gmailPass },
+      });
+      await transporter.sendMail({
+        from: `"Camis FIT" <${gmailUser}>`,
+        to: email,
+        subject: `${codigo} — Seu código de ativação CamisFIT`,
+        html: `
+          <div style="font-family:Arial,sans-serif;max-width:520px;margin:0 auto;background:#0a0a0a;color:#fff;padding:40px;border-radius:14px;">
+            <h1 style="margin:0 0 4px;font-size:26px;">CAMIS<span style="color:#39ff14">FIT</span></h1>
+            <p style="color:#888;font-size:13px;margin:0 0 28px;">Plataforma de gestão fitness</p>
+            <h2 style="color:#fff;font-size:18px;margin:0 0 8px;">Ative sua conta de instrutor</h2>
+            <p style="color:#aaa;font-size:14px;">Olá, <strong style="color:#fff">${nome}</strong>! Use o código abaixo no app para confirmar seu cadastro:</p>
+            <div style="background:#111;border:2px solid #39ff14;border-radius:12px;padding:28px;text-align:center;margin:24px 0;box-shadow:0 0 24px #39ff1440;">
+              <span style="font-size:48px;font-weight:900;letter-spacing:14px;color:#39ff14;">${codigo}</span>
+            </div>
+            <p style="color:#666;font-size:12px;">Expira em 30 minutos. Se não foi você, ignore este email.</p>
+            <hr style="border:none;border-top:1px solid #222;margin:28px 0;">
+            <p style="color:#444;font-size:11px;margin:0;">© 2025 CamisFIT — Plataforma de gestão fitness</p>
           </div>
-          <p style="color:#666;font-size:12px;">Expira em 30 minutos. Se não foi você, ignore este email.</p>
-          <hr style="border:none;border-top:1px solid #222;margin:28px 0;">
-          <p style="color:#444;font-size:11px;margin:0;">© 2025 CamisFIT — Plataforma de gestão fitness</p>
-        </div>
-      `,
-    });
-    return true;
+        `,
+      });
+      return true;
+    }
+
+    console.warn('[Email] Nenhum serviço de email configurado');
+    return false;
   } catch (e) {
     console.error('[Email] Erro ao enviar:', e.message);
     return false;
@@ -77,23 +116,48 @@ module.exports = handler(async (req, res) => {
   }
 
   if (url === 'instrutor/cadastro' && method === 'POST') {
-    const { nome, email, senha, cref, telefone } = body;
-    if (!nome || !email || !senha) return res.status(400).json({ erro: 'Campos obrigatórios faltando' });
-    const existe = await DB.findInstrutorByEmail(email);
-    if (existe && existe.email_verificado !== false) return res.status(409).json({ erro: 'Email já cadastrado' });
-    if (existe && existe.email_verificado === false) {
+    try {
+      const { nome, email, senha, cref, telefone } = body;
+      console.log('[API] Cadastro instrutor recebido:', { nome, email, cref: cref ? 'sim' : 'não', telefone: telefone ? 'sim' : 'não' });
+      
+      if (!nome || !email || !senha) {
+        console.log('[API] Erro: campos obrigatórios faltando');
+        return res.status(400).json({ erro: 'Campos obrigatórios faltando' });
+      }
+      
+      const existe = await DB.findInstrutorByEmail(email);
+      if (existe && existe.email_verificado !== false) {
+        console.log('[API] Erro: email já cadastrado');
+        return res.status(409).json({ erro: 'Email já cadastrado' });
+      }
+      
+      if (existe && existe.email_verificado === false) {
+        console.log('[API] Email existe mas não verificado, reenviando código');
+        const codigo = gerarOTP();
+        await DB.setOTPInstrutor(existe.id, codigo);
+        const emailEnviado = await enviarEmailOTP(email, existe.nome, codigo);
+        console.log('[API] Código reenviado:', { enviado: emailEnviado });
+        return res.status(200).json({ emailEnviado: true, email, mensagem: emailEnviado ? 'Código reenviado para seu email.' : 'Código gerado. Se não receber o email, tente reenviar.' });
+      }
+      
+      console.log('[API] Criando novo instrutor...');
+      const senha_hash = await bcrypt.hash(senha, 10);
+      const codigo_convite = DB.gerarCodigo(nome);
+      const novo = await DB.createInstrutor({ nome, email, senha_hash, cref: cref || '', telefone: telefone || '', pix_chave: email, codigo_convite, plano: 'free', ativo: true });
+      console.log('[API] Instrutor criado:', novo.id);
+      
       const codigo = gerarOTP();
-      await DB.setOTPInstrutor(existe.id, codigo);
-      await enviarEmailOTP(email, existe.nome, codigo);
-      return res.status(200).json({ emailEnviado: true, email, mensagem: 'Código reenviado para seu email.' });
+      await DB.setOTPInstrutor(novo.id, codigo);
+      console.log('[API] Código OTP salvo');
+      
+      const emailEnviado = await enviarEmailOTP(email, nome, codigo);
+      console.log('[API] Email enviado:', { enviado: emailEnviado, email });
+      
+      return res.status(201).json({ emailEnviado: true, email, mensagem: emailEnviado ? 'Código de ativação enviado para seu email.' : 'Código gerado. Se não receber o email, tente reenviar.' });
+    } catch (err) {
+      console.error('[API] Erro no cadastro:', err.message);
+      return res.status(500).json({ erro: `Erro interno: ${err.message}` });
     }
-    const senha_hash = await bcrypt.hash(senha, 10);
-    const codigo_convite = DB.gerarCodigo(nome);
-    const novo = await DB.createInstrutor({ nome, email, senha_hash, cref: cref || '', telefone: telefone || '', pix_chave: email, codigo_convite, plano: 'free', ativo: true });
-    const codigo = gerarOTP();
-    await DB.setOTPInstrutor(novo.id, codigo);
-    await enviarEmailOTP(email, nome, codigo);
-    return res.status(201).json({ emailEnviado: true, email, mensagem: 'Código de ativação enviado para seu email.' });
   }
 
   if (url === 'instrutor/verificar-email' && method === 'POST') {

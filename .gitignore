@@ -28,3 +28,10 @@ Thumbs.db
 
 # Nested subdirectory (old SDK51 copy)
 CamisFIT/
+
+# Playwright
+/test-results/
+/playwright-report/
+/blob-report/
+/playwright/.cache/
+/playwright/.auth/

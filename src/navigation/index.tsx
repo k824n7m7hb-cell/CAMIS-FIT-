@@ -1,8 +1,6 @@
 // src/navigation/index.tsx
-// ─────────────────────────────────────────
-// Camis FIT — Navigation
-// Stack (Auth) → Tab (Instrutor ou Aluno)
-// ─────────────────────────────────────────
+// CamisFIT — Navegação principal
+// Stack (Auth) → Tabs (Instrutor ou Aluno)
 import React from 'react';
 import { View, Text, Platform } from 'react-native';
 import { NavigationContainer } from '@react-navigation/native';
@@ -10,46 +8,82 @@ import { createStackNavigator } from '@react-navigation/stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { Colors, Typography } from '../theme';
 import { useStore } from '../services/store';
+import type {
+  AuthStackParamList,
+  InstrutorStackParamList,
+  InstrutorTabParamList,
+  AlunoStackParamList,
+  AlunoTabParamList,
+} from '../types/navigation';
 
 // Auth screens
 import {
-  WelcomeScreen, LoginInstrutorScreen, CadastroInstrutorScreen,
-  LoginAlunoScreen, CadastroAlunoScreen,
+  WelcomeScreen,
+  LoginInstrutorScreen,
+  CadastroInstrutorScreen,
+  LoginAlunoScreen,
+  CadastroAlunoScreen,
 } from '../screens/auth/AuthScreens';
 
 // Instrutor screens
 import {
-  InstrutorHomeScreen, AlunosScreen,
-  TreinosInstrutorScreen, FaturasInstrutorScreen, PerfilInstrutorScreen,
+  InstrutorHomeScreen,
+  AlunosScreen,
+  TreinosInstrutorScreen,
+  FaturasInstrutorScreen,
+  PerfilInstrutorScreen,
 } from '../screens/instrutor/InstrutorScreens';
 
 // Aluno screens
 import {
-  AlunoHomeScreen, TreinoAlunoScreen, CamilaScreen,
-  FaturasAlunoScreen, EvolucaoAlunoScreen, PerfilAlunoScreen,
+  AlunoHomeScreen,
+  TreinoAlunoScreen,
+  CamilaScreen,
+  FaturasAlunoScreen,
+  EvolucaoAlunoScreen,
+  PerfilAlunoScreen,
 } from '../screens/aluno/AlunoScreens';
 
-const Stack = createStackNavigator();
-const Tab = createBottomTabNavigator();
+const AuthStack = createStackNavigator<AuthStackParamList>();
+const InstrutorStack = createStackNavigator<InstrutorStackParamList>();
+const InstrutorTab = createBottomTabNavigator<InstrutorTabParamList>();
+const AlunoStack = createStackNavigator<AlunoStackParamList>();
+const AlunoTab = createBottomTabNavigator<AlunoTabParamList>();
 
 const screenOptions = { headerShown: false };
 
 // ── Auth Stack ─────────────────────────
-const AuthStack = () => (
-  <Stack.Navigator screenOptions={screenOptions}>
-    <Stack.Screen name="Welcome" component={WelcomeScreen} />
-    <Stack.Screen name="LoginInstrutor" component={LoginInstrutorScreen} />
-    <Stack.Screen name="CadastroInstrutor" component={CadastroInstrutorScreen} />
-    <Stack.Screen name="LoginAluno" component={LoginAlunoScreen} />
-    <Stack.Screen name="CadastroAluno" component={CadastroAlunoScreen} />
-  </Stack.Navigator>
+const AuthNavigator = () => (
+  <AuthStack.Navigator screenOptions={screenOptions}>
+    <AuthStack.Screen name="Welcome" component={WelcomeScreen} />
+    <AuthStack.Screen name="LoginInstrutor" component={LoginInstrutorScreen} />
+    <AuthStack.Screen name="CadastroInstrutor" component={CadastroInstrutorScreen} />
+    <AuthStack.Screen name="LoginAluno" component={LoginAlunoScreen} />
+    <AuthStack.Screen name="CadastroAluno" component={CadastroAlunoScreen} />
+  </AuthStack.Navigator>
 );
 
-// ── Tab Bar Icon ───────────────────────
-const TabIcon = ({ icon, label, focused }: { icon: string; label: string; focused: boolean }) => (
+// ── Tab Icon ───────────────────────────
+const TabIcon = ({
+  icon,
+  label,
+  focused,
+}: {
+  icon: string;
+  label: string;
+  focused: boolean;
+}) => (
   <View style={{ alignItems: 'center', gap: 3 }}>
     <Text style={{ fontSize: 20, opacity: focused ? 1 : 0.4 }}>{icon}</Text>
-    <Text style={{ fontSize: 9, fontWeight: Typography.weights.bold, letterSpacing: 0.5, textTransform: 'uppercase', color: focused ? Colors.neon : Colors.textFaint }}>
+    <Text
+      style={{
+        fontSize: 9,
+        fontWeight: Typography.weights.bold,
+        letterSpacing: 0.5,
+        textTransform: 'uppercase',
+        color: focused ? Colors.neon : Colors.textFaint,
+      }}
+    >
       {label}
     </Text>
   </View>
@@ -64,85 +98,85 @@ const tabBarStyle = {
   paddingTop: 8,
 };
 
-// ── Instrutor Tabs ─────────────────────
-const InstrutorStack = () => (
-  <Stack.Navigator screenOptions={screenOptions}>
-    <Stack.Screen name="InstrutorHome" component={InstrutorHomeScreen} />
-    <Stack.Screen name="DetalheAluno" component={AlunosScreen} />
-  </Stack.Navigator>
+// ── Instrutor ─────────────────────────
+const InstrutorPainelStack = () => (
+  <InstrutorStack.Navigator screenOptions={screenOptions}>
+    <InstrutorStack.Screen name="InstrutorHome" component={InstrutorHomeScreen} />
+    <InstrutorStack.Screen name="DetalheAluno" component={AlunosScreen} />
+  </InstrutorStack.Navigator>
 );
 
-const InstrutorTabs = () => (
-  <Tab.Navigator
+const InstrutorNavigator = () => (
+  <InstrutorTab.Navigator
     screenOptions={{ headerShown: false, tabBarStyle, tabBarShowLabel: false }}
   >
-    <Tab.Screen
+    <InstrutorTab.Screen
       name="Painel"
-      component={InstrutorStack}
+      component={InstrutorPainelStack}
       options={{ tabBarIcon: ({ focused }) => <TabIcon icon="📊" label="Painel" focused={focused} /> }}
     />
-    <Tab.Screen
+    <InstrutorTab.Screen
       name="Alunos"
       component={AlunosScreen}
       options={{ tabBarIcon: ({ focused }) => <TabIcon icon="👥" label="Alunos" focused={focused} /> }}
     />
-    <Tab.Screen
+    <InstrutorTab.Screen
       name="Treinos"
       component={TreinosInstrutorScreen}
       options={{ tabBarIcon: ({ focused }) => <TabIcon icon="🏋️" label="Treinos" focused={focused} /> }}
     />
-    <Tab.Screen
+    <InstrutorTab.Screen
       name="Faturas"
       component={FaturasInstrutorScreen}
       options={{ tabBarIcon: ({ focused }) => <TabIcon icon="💳" label="Faturas" focused={focused} /> }}
     />
-    <Tab.Screen
+    <InstrutorTab.Screen
       name="Conta"
       component={PerfilInstrutorScreen}
       options={{ tabBarIcon: ({ focused }) => <TabIcon icon="⚙️" label="Conta" focused={focused} /> }}
     />
-  </Tab.Navigator>
+  </InstrutorTab.Navigator>
 );
 
-// ── Aluno Tabs ─────────────────────────
-const AlunoStack = () => (
-  <Stack.Navigator screenOptions={screenOptions}>
-    <Stack.Screen name="AlunoHomeMain" component={AlunoHomeScreen} />
-    <Stack.Screen name="TreinoAluno" component={TreinoAlunoScreen} />
-    <Stack.Screen name="FaturasAluno" component={FaturasAlunoScreen} />
-  </Stack.Navigator>
+// ── Aluno ─────────────────────────────
+const AlunoHomeStack = () => (
+  <AlunoStack.Navigator screenOptions={screenOptions}>
+    <AlunoStack.Screen name="AlunoHomeMain" component={AlunoHomeScreen} />
+    <AlunoStack.Screen name="TreinoAluno" component={TreinoAlunoScreen} />
+    <AlunoStack.Screen name="FaturasAluno" component={FaturasAlunoScreen} />
+  </AlunoStack.Navigator>
 );
 
-const AlunoTabs = () => (
-  <Tab.Navigator
+const AlunoNavigator = () => (
+  <AlunoTab.Navigator
     screenOptions={{ headerShown: false, tabBarStyle, tabBarShowLabel: false }}
   >
-    <Tab.Screen
+    <AlunoTab.Screen
       name="Home"
-      component={AlunoStack}
+      component={AlunoHomeStack}
       options={{ tabBarIcon: ({ focused }) => <TabIcon icon="🏠" label="Home" focused={focused} /> }}
     />
-    <Tab.Screen
+    <AlunoTab.Screen
       name="TreinoTab"
       component={TreinoAlunoScreen}
       options={{ tabBarIcon: ({ focused }) => <TabIcon icon="🏋️" label="Treino" focused={focused} /> }}
     />
-    <Tab.Screen
+    <AlunoTab.Screen
       name="Camila"
       component={CamilaScreen}
       options={{ tabBarIcon: ({ focused }) => <TabIcon icon="✨" label="Camila" focused={focused} /> }}
     />
-    <Tab.Screen
+    <AlunoTab.Screen
       name="Evolucao"
       component={EvolucaoAlunoScreen}
       options={{ tabBarIcon: ({ focused }) => <TabIcon icon="📈" label="Evolução" focused={focused} /> }}
     />
-    <Tab.Screen
+    <AlunoTab.Screen
       name="Perfil"
       component={PerfilAlunoScreen}
       options={{ tabBarIcon: ({ focused }) => <TabIcon icon="👤" label="Perfil" focused={focused} /> }}
     />
-  </Tab.Navigator>
+  </AlunoTab.Navigator>
 );
 
 // ── Root Navigator ─────────────────────
@@ -152,11 +186,11 @@ export const RootNavigator = () => {
   return (
     <NavigationContainer>
       {!isAuthenticated ? (
-        <AuthStack />
+        <AuthNavigator />
       ) : user?.role === 'instrutor' ? (
-        <InstrutorTabs />
+        <InstrutorNavigator />
       ) : (
-        <AlunoTabs />
+        <AlunoNavigator />
       )}
     </NavigationContainer>
   );

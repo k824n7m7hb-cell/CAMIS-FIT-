@@ -1,37 +1,31 @@
 // src/services/api.ts
-// ─────────────────────────────────────────
-// Camis FIT — API Service
-// Configure BASE_URL to your backend
-// ─────────────────────────────────────────
+// Cliente Axios do CamisFIT — interceptadores de auth e retry automático
 import axios from 'axios';
 import * as SecureStore from 'expo-secure-store';
-
-// ── Config ─────────────────────────────
-// Replace with your backend URL:
-export const BASE_URL = 'https://camis-fit.vercel.app/api';
+import { API_BASE_URL, TOKEN_KEY } from '../constants';
 
 const api = axios.create({
-  baseURL: BASE_URL,
+  baseURL: API_BASE_URL,
   timeout: 15000,
   headers: { 'Content-Type': 'application/json' },
 });
 
-// Attach token automatically
+// Anexa token Bearer automaticamente
 api.interceptors.request.use(async (config) => {
-  const token = await SecureStore.getItemAsync('camisfit_token');
+  const token = await SecureStore.getItemAsync(TOKEN_KEY);
   if (token) config.headers.Authorization = `Bearer ${token}`;
   return config;
 });
 
-// Refresh / logout on 401
+// Remove token local em 401 (sessão expirada)
 api.interceptors.response.use(
   (res) => res,
   async (err) => {
     if (err.response?.status === 401) {
-      await SecureStore.deleteItemAsync('camisfit_token');
+      await SecureStore.deleteItemAsync(TOKEN_KEY).catch(() => {});
     }
     return Promise.reject(err);
-  }
+  },
 );
 
 // ── Auth ───────────────────────────────
@@ -43,13 +37,21 @@ export const authAPI = {
     api.post('/auth/aluno/login', { email, senha }),
 
   cadastroInstrutor: (data: {
-    nome: string; email: string; senha: string;
-    cref: string; telefone?: string;
+    nome: string;
+    email: string;
+    senha: string;
+    cref: string;
+    telefone?: string;
   }) => api.post('/auth/instrutor/cadastro', data),
 
   cadastroAluno: (data: {
-    nome: string; email: string; senha: string;
-    codigoInstrutor: string; peso?: number; altura?: number; objetivo?: string;
+    nome: string;
+    email: string;
+    senha: string;
+    codigoInstrutor: string;
+    peso?: number;
+    altura?: number;
+    objetivo?: string;
   }) => {
     const { codigoInstrutor, ...rest } = data;
     return api.post('/auth/aluno/cadastro', { ...rest, codigo_instrutor: codigoInstrutor });
@@ -67,109 +69,91 @@ export const authAPI = {
   esqueciSenha: (email: string) =>
     api.post('/auth/esqueci-senha', { email }),
 
-  me: () =>
-    api.get('/auth/me'),
+  me: () => api.get('/auth/me'),
 };
 
 // ── Instrutor ──────────────────────────
 export const instrutorAPI = {
-  getAlunos: () =>
-    api.get('/instrutor/alunos'),
+  getAlunos: () => api.get('/instrutor/alunos'),
+  getAluno: (id: string) => api.get(`/instrutor/alunos/${id}`),
+  liberarAluno: (email: string) => api.post('/instrutor/alunos/liberar', { email }),
+  bloquearAluno: (alunoId: string) => api.patch(`/instrutor/alunos/${alunoId}/bloquear`),
+  desbloquearAluno: (alunoId: string) => api.patch(`/instrutor/alunos/${alunoId}/desbloquear`),
+  gerarCodigo: () => api.post('/instrutor/codigo/gerar'),
 
-  getAluno: (id: string) =>
-    api.get(`/instrutor/alunos/${id}`),
-
-  liberarAluno: (email: string) =>
-    api.post('/instrutor/alunos/liberar', { email }),
-
-  bloquearAluno: (alunoId: string) =>
-    api.patch(`/instrutor/alunos/${alunoId}/bloquear`),
-
-  gerarCodigo: () =>
-    api.post('/instrutor/codigo/gerar'),
-
-  // Fichas de treino
-  getFichas: () =>
-    api.get('/instrutor/fichas'),
-
-  criarFicha: (data: any) =>
-    api.post('/instrutor/fichas', data),
-
-  atualizarFicha: (id: string, data: any) =>
-    api.put(`/instrutor/fichas/${id}`, data),
-
-  deletarFicha: (id: string) =>
-    api.delete(`/instrutor/fichas/${id}`),
-
+  getFichas: () => api.get('/instrutor/fichas'),
+  criarFicha: (data: unknown) => api.post('/instrutor/fichas', data),
+  atualizarFicha: (id: string, data: unknown) => api.put(`/instrutor/fichas/${id}`, data),
+  deletarFicha: (id: string) => api.delete(`/instrutor/fichas/${id}`),
   enviarFichaParaAluno: (fichaId: string, alunoId: string) =>
     api.post(`/instrutor/fichas/${fichaId}/enviar`, { alunoId }),
 
-  // Exercícios
-  getExercicios: () =>
-    api.get('/instrutor/exercicios'),
-
-  criarExercicio: (data: any) =>
-    api.post('/instrutor/exercicios', data),
-
-  // Financeiro
-  getFaturas: () =>
-    api.get('/instrutor/faturas'),
-
+  getFaturas: () => api.get('/instrutor/faturas'),
   criarFatura: (data: {
-    alunoId: string; tipo: string; descricao: string;
-    valor: number; vencimento: string;
-  }) => api.post('/instrutor/faturas', data),
+    alunoId: string;
+    tipo: string;
+    descricao: string;
+    valor: number;
+    vencimento: string;
+  }) => api.post('/instrutor/faturas', {
+    aluno_id: data.alunoId,
+    tipo: data.tipo,
+    descricao: data.descricao,
+    valor: data.valor,
+    vencimento: data.vencimento,
+  }),
+  marcarPago: (faturaId: string) => api.patch(`/instrutor/faturas/${faturaId}/pago`),
+  getResumoFinanceiro: () => api.get('/instrutor/financeiro/resumo'),
 
-  marcarPago: (faturaId: string) =>
-    api.patch(`/instrutor/faturas/${faturaId}/pago`),
-
-  getResumoFinanceiro: () =>
-    api.get('/instrutor/financeiro/resumo'),
+  getPerfil: () => api.get('/instrutor/perfil'),
+  atualizarPerfil: (data: unknown) => api.put('/instrutor/perfil', data),
 };
 
 // ── Aluno ──────────────────────────────
 export const alunoAPI = {
-  getMeuPerfil: () =>
-    api.get('/aluno/perfil'),
-
-  atualizarPerfil: (data: any) =>
-    api.put('/aluno/perfil', data),
-
-  getMeusTreinos: () =>
-    api.get('/aluno/treinos'),
-
-  registrarEvolucao: (data: {
-    peso: number; gordura?: number; observacao?: string;
-  }) => api.post('/aluno/evolucao', data),
-
-  getEvolucao: () =>
-    api.get('/aluno/evolucao'),
-
-  getMinhasFaturas: () =>
-    api.get('/aluno/faturas'),
-
+  getMeuPerfil: () => api.get('/aluno/perfil'),
+  atualizarPerfil: (data: unknown) => api.put('/aluno/perfil', data),
+  getMeusTreinos: () => api.get('/aluno/treinos'),
+  iniciarTreino: (fichaId: string) => api.post(`/aluno/treinos/${fichaId}/iniciar`),
+  finalizarTreino: (fichaId: string) => api.post(`/aluno/treinos/${fichaId}/finalizar`),
+  registrarEvolucao: (data: { peso: number; gordura?: number; observacao?: string }) =>
+    api.post('/aluno/evolucao', data),
+  getEvolucao: () => api.get('/aluno/evolucao'),
+  getMinhasFaturas: () => api.get('/aluno/faturas'),
   pagarFatura: (faturaId: string, metodoPagamento: string) =>
     api.post(`/aluno/faturas/${faturaId}/pagar`, { metodoPagamento }),
-
   vincularInstrutor: (codigo: string) =>
     api.post('/aluno/vincular-instrutor', { codigo }),
 };
 
 // ── Camila IA ──────────────────────────
 export const camilaAPI = {
-  chat: (mensagem: string, contexto?: {
-    nome?: string; peso?: number; objetivo?: string;
-    treino?: string; historico?: string[];
-  }) => api.post('/ia/camila/chat', { mensagem, contexto }),
+  chat: (
+    mensagem: string,
+    contexto?: {
+      nome?: string;
+      peso?: number;
+      objetivo?: string;
+      treino?: string;
+      historico?: string[];
+    },
+  ) => api.post('/ia/camila/chat', { mensagem, contexto }),
 
   gerarTreinoIA: (dados: {
-    nivel: string; objetivo: string; diasSemana: number;
-    gruposMusculares?: string[]; equipamentos?: string[];
+    nivel: string;
+    objetivo: string;
+    diasSemana: number;
+    gruposMusculares?: string[];
+    equipamentos?: string[];
   }) => api.post('/ia/treino/gerar', dados),
 
   gerarDietaIA: (dados: {
-    peso: number; altura: number; objetivo: string;
-    rotina: string; orcamento: string; restricoes?: string[];
+    peso: number;
+    altura: number;
+    objetivo: string;
+    rotina: string;
+    orcamento: string;
+    restricoes?: string[];
   }) => api.post('/ia/dieta/gerar', dados),
 
   scannerAlimento: (imagemBase64: string) =>
@@ -180,12 +164,8 @@ export const camilaAPI = {
 export const notificacoesAPI = {
   registrarToken: (expoPushToken: string) =>
     api.post('/notificacoes/token', { token: expoPushToken }),
-
-  getNotificacoes: () =>
-    api.get('/notificacoes'),
-
-  marcarLida: (id: string) =>
-    api.patch(`/notificacoes/${id}/lida`),
+  getNotificacoes: () => api.get('/notificacoes'),
+  marcarLida: (id: string) => api.patch(`/notificacoes/${id}/lida`),
 };
 
 export default api;
