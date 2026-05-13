@@ -17,41 +17,47 @@ export const useAuth = () => {
       if (!savedToken) return false;
 
       const res = await authAPI.me();
-      const { user: u } = res.data;
+      const { user: restoredUser } = res.data || {};
 
-      if (u.role === 'instrutor') {
-        setUser(
-          {
-            id: u.id,
-            nome: u.nome,
-            email: u.email,
-            role: 'instrutor',
-            cref: u.cref,
-            pixChave: u.pix_chave,
-            codigoConvite: u.codigo_convite,
-            avatarInitials: u.nome.slice(0, 2).toUpperCase(),
-          },
-          savedToken,
-        );
-      } else {
-        setUser(
-          {
-            id: u.id,
-            nome: u.nome,
-            email: u.email,
-            role: 'aluno',
-            instrutorId: u.instrutor_id,
-            instrutorNome: u.instrutor_nome,
-            nivel: u.nivel_gamif,
-            xp: u.xp,
-            peso: u.peso,
-            altura: u.altura,
-            objetivo: u.objetivo,
-            avatarInitials: u.avatar_initials,
-          },
-          savedToken,
-        );
+      if (!restoredUser?.id || !restoredUser?.role) {
+        await SecureStore.deleteItemAsync(TOKEN_KEY).catch(() => {});
+        return false;
       }
+
+      if (restoredUser.role === 'instrutor') {
+        setUser(
+          {
+            id: restoredUser.id,
+            nome: restoredUser.nome,
+            email: restoredUser.email,
+            role: 'instrutor',
+            cref: restoredUser.cref,
+            pixChave: restoredUser.pix_chave,
+            codigoConvite: restoredUser.codigo_convite,
+            avatarInitials: restoredUser.nome?.slice?.(0, 2)?.toUpperCase?.() || 'IN',
+          },
+          savedToken,
+        );
+        return true;
+      }
+
+      setUser(
+        {
+          id: restoredUser.id,
+          nome: restoredUser.nome,
+          email: restoredUser.email,
+          role: 'aluno',
+          instrutorId: restoredUser.instrutor_id,
+          instrutorNome: restoredUser.instrutor_nome,
+          nivel: restoredUser.nivel_gamif,
+          xp: restoredUser.xp,
+          peso: restoredUser.peso,
+          altura: restoredUser.altura,
+          objetivo: restoredUser.objetivo,
+          avatarInitials: restoredUser.avatar_initials,
+        },
+        savedToken,
+      );
       return true;
     } catch {
       await SecureStore.deleteItemAsync(TOKEN_KEY).catch(() => {});

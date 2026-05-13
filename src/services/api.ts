@@ -3,6 +3,7 @@
 import axios from 'axios';
 import * as SecureStore from 'expo-secure-store';
 import { API_BASE_URL, TOKEN_KEY } from '../constants';
+import { useStore } from './store';
 
 const api = axios.create({
   baseURL: API_BASE_URL,
@@ -12,7 +13,7 @@ const api = axios.create({
 
 // Anexa token Bearer automaticamente
 api.interceptors.request.use(async (config) => {
-  const token = await SecureStore.getItemAsync(TOKEN_KEY);
+  const token = useStore.getState().token || (await SecureStore.getItemAsync(TOKEN_KEY));
   if (token) config.headers.Authorization = `Bearer ${token}`;
   return config;
 });
@@ -54,7 +55,19 @@ export const authAPI = {
     objetivo?: string;
   }) => {
     const { codigoInstrutor, ...rest } = data;
-    return api.post('/auth/aluno/cadastro', { ...rest, codigo_instrutor: codigoInstrutor });
+    const nome = rest.nome?.trim();
+    const email = rest.email?.trim().toLowerCase();
+    const senha = rest.senha;
+    const codigo = codigoInstrutor?.trim().toUpperCase();
+
+    return api.post('/auth/aluno/cadastro', {
+      ...rest,
+      nome,
+      email,
+      senha,
+      codigo_instrutor: codigo,
+      codigoInstrutor: codigo,
+    });
   },
 
   validarCodigo: (codigo: string) =>
@@ -121,7 +134,7 @@ export const alunoAPI = {
   getEvolucao: () => api.get('/aluno/evolucao'),
   getMinhasFaturas: () => api.get('/aluno/faturas'),
   pagarFatura: (faturaId: string, metodoPagamento: string) =>
-    api.post(`/aluno/faturas/${faturaId}/pagar`, { metodoPagamento }),
+    api.post(`/aluno/faturas/${faturaId}/pagar`, { metodo_pagamento: metodoPagamento }),
   vincularInstrutor: (codigo: string) =>
     api.post('/aluno/vincular-instrutor', { codigo }),
 };

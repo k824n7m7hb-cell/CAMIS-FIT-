@@ -147,7 +147,34 @@ export const AlunoHomeScreen = ({ navigation }: AlunoScreenProps<'AlunoHomeMain'
 const RegistrarEvolucaoCard = () => {
   const [peso, setPeso] = useState('');
   const [gordura, setGordura] = useState('');
+  const [salvando, setSalvando] = useState(false);
   const addEvolucao = useStore(s => s.addEvolucao);
+  const user = useStore(s => s.user);
+  const token = useStore(s => s.token);
+  const setUser = useStore(s => s.setUser);
+
+  const salvarEvolucao = async () => {
+    if (!peso) { Alert.alert('Informe o peso'); return; }
+
+    setSalvando(true);
+    try {
+      await alunoAPI.registrarEvolucao({
+        peso: parseFloat(peso),
+        gordura: parseFloat(gordura) || 0,
+      });
+      addEvolucao({ data: new Date().toISOString().split('T')[0], peso: parseFloat(peso), gordura: parseFloat(gordura) || 0 });
+      if (user && token) {
+        setUser({ ...user, peso: parseFloat(peso) }, token);
+      }
+      setPeso('');
+      setGordura('');
+      Alert.alert('Registrado!', 'Sua evolução foi salva.');
+    } catch (err: any) {
+      Alert.alert('Erro ao salvar', err?.response?.data?.erro || err?.message || 'Não foi possível salvar sua evolução.');
+    } finally {
+      setSalvando(false);
+    }
+  };
 
   return (
     <Card>
@@ -155,12 +182,7 @@ const RegistrarEvolucaoCard = () => {
         <View style={{ flex: 1 }}><Input label="Peso (kg)" value={peso} onChangeText={setPeso} placeholder="78.5" keyboardType="numeric" /></View>
         <View style={{ flex: 1 }}><Input label="% gordura" value={gordura} onChangeText={setGordura} placeholder="14.0" keyboardType="numeric" /></View>
       </View>
-      <NeonButton label="Salvar medidas" variant="ghost" onPress={() => {
-        if (!peso) { Alert.alert('Informe o peso'); return; }
-        addEvolucao({ data: new Date().toISOString().split('T')[0], peso: parseFloat(peso), gordura: parseFloat(gordura) || 0 });
-        setPeso(''); setGordura('');
-        Alert.alert('Registrado!', 'Sua evolução foi salva.');
-      }} small />
+      <NeonButton label="Salvar medidas" variant="ghost" onPress={salvarEvolucao} loading={salvando} small />
     </Card>
   );
 };
@@ -547,9 +569,23 @@ export const CamilaScreen = () => {
 
 // ── Faturas Aluno ──────────────────────
 export const FaturasAlunoScreen = () => {
-  const { minhasFaturas } = useStore();
+  const { minhasFaturas, setMinhasFaturas } = useStore();
   const totalPago = minhasFaturas.filter(f => f.status === 'pago').reduce((s, f) => s + f.valor, 0);
   const totalPendente = minhasFaturas.filter(f => f.status !== 'pago').reduce((s, f) => s + f.valor, 0);
+
+  const pagarFatura = async (fat: Fatura, metodoPagamento: string) => {
+    try {
+      await alunoAPI.pagarFatura(fat.id, metodoPagamento);
+      setMinhasFaturas(minhasFaturas.map((item) =>
+        item.id === fat.id
+          ? { ...item, status: 'pago', pagoEm: new Date().toISOString() }
+          : item,
+      ));
+      Alert.alert('Pagamento registrado', `A fatura "${fat.descricao}" foi marcada como paga.`);
+    } catch (err: any) {
+      Alert.alert('Erro no pagamento', err?.response?.data?.erro || err?.message || 'Não foi possível registrar o pagamento.');
+    }
+  };
 
   return (
     <ScrollView style={{ flex: 1, backgroundColor: Colors.bg }} showsVerticalScrollIndicator={false}>
@@ -583,8 +619,8 @@ export const FaturasAlunoScreen = () => {
             </View>
             {fat.status !== 'pago' && (
               <NeonButton label="Pagar agora" onPress={() => Alert.alert('Pagamento', 'Escolha o método: Pix, Cartão ou Boleto', [
-                { text: 'Pix', onPress: () => Alert.alert('Pix gerado!', 'Escaneie o QR code para pagar.') },
-                { text: 'Cartão', onPress: () => Alert.alert('Redirecionando...', 'Abrindo checkout seguro.') },
+                { text: 'Pix', onPress: () => pagarFatura(fat, 'pix') },
+                { text: 'Cartão', onPress: () => pagarFatura(fat, 'cartao') },
                 { text: 'Cancelar', style: 'cancel' },
               ])} small />
             )}
@@ -602,9 +638,9 @@ export const EvolucaoAlunoScreen = () => {
   const pesoInicial = evolucao[0]?.peso || 80;
   const pesoAtual = evolucao[evolucao.length - 1]?.peso || 78;
   const diff = (pesoAtual - pesoInicial).toFixed(1);
-
-  const maxPeso = Math.max(...evolucao.map(e => e.peso));
-  const minPeso = Math.min(...evolucao.map(e => e.peso));
+  const pesos = evolucao.map(e => e.peso);
+  const maxPeso = pesos.length > 0 ? Math.max(...pesos) : pesoAtual;
+  const minPeso = pesos.length > 0 ? Math.min(...pesos) : pesoInicial;
 
   const badges = [
     { icon: '🏆', nome: 'Primeira semana', earned: true },

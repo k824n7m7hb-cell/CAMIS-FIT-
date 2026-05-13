@@ -168,7 +168,12 @@ export const useStore = create<AppState>((set) => ({
 
   mensagens: [mensagemBoasVindas],
 
-  setUser: (user, token) => set({ user, token, isAuthenticated: true }),
+  setUser: (user, token) => {
+    if (typeof token === 'string' && token.trim()) {
+      SecureStore.setItemAsync(TOKEN_KEY, token).catch(() => {});
+    }
+    set({ user, token, isAuthenticated: true });
+  },
 
   logout: () => {
     SecureStore.deleteItemAsync(TOKEN_KEY).catch(() => {});

@@ -15,6 +15,16 @@ import { mapAluno, mapFicha, mapFatura } from '../../utils/mappers';
 import type { InstrutorScreenProps } from '../../types/navigation';
 
 const pad = { paddingHorizontal: Spacing.lg };
+const toAlertMessage = (value: unknown, fallback = 'Ocorreu um erro.') => {
+  if (typeof value === 'string') return value;
+  if (value == null) return fallback;
+  if (value instanceof Error) return value.message || fallback;
+  try {
+    return JSON.stringify(value);
+  } catch {
+    return String(value);
+  }
+};
 
 // ── Dashboard Instrutor ────────────────
 export const InstrutorHomeScreen = ({ navigation }: InstrutorScreenProps<'InstrutorHome'>) => {
@@ -94,7 +104,7 @@ export const InstrutorHomeScreen = ({ navigation }: InstrutorScreenProps<'Instru
         {/* Alunos */}
         <SectionTitle title="Seus alunos" />
         {alunos.slice(0, 3).map(aluno => (
-          <TouchableOpacity key={aluno.id} onPress={() => navigation.navigate('DetalheAluno', { aluno })} style={{ flexDirection: 'row', alignItems: 'center', gap: 10, padding: 10, backgroundColor: Colors.card2, borderRadius: Radius.lg, borderWidth: 1, borderColor: Colors.border, marginBottom: 7 }}>
+          <TouchableOpacity key={aluno.id} onPress={() => navigation.navigate('DetalheAluno', { alunoId: aluno.id, alunoNome: aluno.nome })} style={{ flexDirection: 'row', alignItems: 'center', gap: 10, padding: 10, backgroundColor: Colors.card2, borderRadius: Radius.lg, borderWidth: 1, borderColor: Colors.border, marginBottom: 7 }}>
             <Avatar initials={aluno.nome.slice(0, 2).toUpperCase()} color={aluno.statusPagamento === 'pago' ? Colors.neon : aluno.statusPagamento === 'pendente' ? Colors.blue : Colors.pink} />
             <View style={{ flex: 1 }}>
               <Text style={{ fontSize: 13, fontWeight: Typography.weights.bold, color: Colors.text }}>{aluno.nome}</Text>
@@ -165,7 +175,7 @@ export const AlunosScreen = ({ navigation }: InstrutorScreenProps<'InstrutorHome
       setAlunoParaTreino('');
       setExsNaFicha([]);
     } catch (err: any) {
-      Alert.alert('Erro', (err as any).response?.data?.erro || (err as any).message || 'Não foi possível criar o treino.');
+      Alert.alert('Erro', toAlertMessage((err as any).response?.data?.erro ?? (err as any).message, 'Não foi possível criar o treino.'));
     } finally {
       setEnviandoTreino(false);
     }
@@ -198,13 +208,54 @@ export const AlunosScreen = ({ navigation }: InstrutorScreenProps<'InstrutorHome
               await instrutorAPI.enviarFichaParaAluno(f.id, aluno.id);
               Alert.alert('Enviado!', `"${f.titulo}" enviada para ${aluno.nome}.`);
             } catch (err: any) {
-              Alert.alert('Erro ao enviar', err.response?.data?.erro || err.message || 'Não foi possível enviar o treino.');
+              Alert.alert('Erro ao enviar', toAlertMessage(err.response?.data?.erro ?? err.message, 'Não foi possível enviar o treino.'));
             }
           },
         })),
         { text: 'Cancelar', style: 'cancel' as const },
       ]
     );
+  };
+
+  const liberarAcesso = async () => {
+    const email = emailNovo.trim().toLowerCase();
+    if (!email) {
+      Alert.alert('E-mail obrigatório', 'Informe o e-mail do aluno para liberar o acesso.');
+      return;
+    }
+
+    try {
+      await instrutorAPI.liberarAluno(email);
+      const alunosRes = await instrutorAPI.getAlunos();
+      setAlunos(alunosRes.data.map(mapAluno));
+      setEmailNovo('');
+      Alert.alert('Acesso liberado', `O aluno ${email} foi atualizado com sucesso.`);
+    } catch (err: any) {
+      Alert.alert(
+        'Erro ao liberar acesso',
+        toAlertMessage(err?.response?.data?.erro ?? err?.message, 'Não foi possível liberar o acesso.'),
+      );
+    }
+  };
+
+  const alterarStatusAluno = async (aluno: Aluno, ativo: boolean) => {
+    try {
+      if (ativo) {
+        await instrutorAPI.desbloquearAluno(aluno.id);
+        updateAluno(aluno.id, { ativo: true });
+        Alert.alert('Aluno desbloqueado', `${aluno.nome} voltou a ter acesso.`);
+        return;
+      }
+
+      await instrutorAPI.bloquearAluno(aluno.id);
+      bloquearAluno(aluno.id);
+      Alert.alert('Aluno bloqueado', `${aluno.nome} teve o acesso suspenso.`);
+    } catch (err: any) {
+      Alert.alert(
+        'Erro ao atualizar aluno',
+        toAlertMessage(err?.response?.data?.erro ?? err?.message, 'Não foi possível atualizar o status do aluno.'),
+      );
+    }
   };
 
   return (
@@ -244,18 +295,26 @@ export const AlunosScreen = ({ navigation }: InstrutorScreenProps<'InstrutorHome
               <NeonButton label="Enviar treino" onPress={() => enviarTreino(aluno)} style={{ flex: 1 }} small />
               <NeonButton label="Fatura" variant="ghost" onPress={() => {}} style={{ flex: 1 }} small />
               {!aluno.ativo && (
-                <NeonButton label="Desbloquear" variant="purple" onPress={() => updateAluno(aluno.id, { ativo: true })} style={{ flex: 1 }} small />
+                <NeonButton label="Desbloquear" variant="purple" onPress={() => alterarStatusAluno(aluno, true)} style={{ flex: 1 }} small />
               )}
               {aluno.ativo && aluno.statusPagamento === 'vencido' && (
-                <NeonButton label="Bloquear" variant="danger" onPress={() => bloquearAluno(aluno.id)} style={{ flex: 1 }} small />
+                <NeonButton label="Bloquear" variant="danger" onPress={() => alterarStatusAluno(aluno, false)} style={{ flex: 1 }} small />
               )}
             </View>
           </Card>
         ))}
 
         <Card>
+          <Input
+            label="E-mail do aluno"
+            value={emailNovo}
+            onChangeText={setEmailNovo}
+            placeholder="aluno@email.com"
+            keyboardType="email-address"
+            autoCapitalize="none"
+          />
           <View style={{ flexDirection: 'row', gap: 8 }}>
-            <NeonButton label="Liberar acesso" onPress={() => { Alert.alert('Convite enviado!', `Acesso liberado para ${emailNovo}`); setEmailNovo(''); }} style={{ flex: 1 }} small />
+            <NeonButton label="Liberar acesso" onPress={liberarAcesso} style={{ flex: 1 }} small />
             <NeonButton label="Via QR Code" variant="ghost" onPress={() => Alert.alert('QR Code', 'Mostrar QR Code com o código de convite')} style={{ flex: 1 }} small />
           </View>
         </Card>
@@ -431,7 +490,7 @@ export const TreinosInstrutorScreen = ({ navigation }: InstrutorScreenProps<'Ins
       setCriandoPrograma(false);
       resetBuilder();
     } catch (err: any) {
-      Alert.alert('Erro', (err as any).response?.data?.erro || (err as any).message || 'Não foi possível enviar a ficha.');
+      Alert.alert('Erro', toAlertMessage((err as any).response?.data?.erro ?? (err as any).message, 'Não foi possível enviar a ficha.'));
     } finally {
       setEnviandoPrograma(false);
     }
@@ -447,7 +506,7 @@ export const TreinosInstrutorScreen = ({ navigation }: InstrutorScreenProps<'Ins
             await instrutorAPI.enviarFichaParaAluno(ficha.id, a.id);
             Alert.alert('Enviado!', `Ficha enviada para ${a.nome}!`);
           } catch (err: any) {
-            Alert.alert('Erro', (err as any).response?.data?.erro || (err as any).message || 'Não foi possível enviar.');
+            Alert.alert('Erro', toAlertMessage((err as any).response?.data?.erro ?? (err as any).message, 'Não foi possível enviar.'));
           }
         },
       })),
@@ -711,9 +770,22 @@ export const FaturasInstrutorScreen = () => {
       Alert.alert('Fatura gerada!', `A fatura foi enviada para ${aluno.nome}.`);
       setNovaFat({ alunoId: '', tipo: 'mensalidade', descricao: '', valor: '' });
     } catch (err: any) {
-      Alert.alert('Erro ao gerar fatura', err.response?.data?.erro || err.message || 'Não foi possível enviar a fatura.');
+      Alert.alert('Erro ao gerar fatura', toAlertMessage(err.response?.data?.erro ?? err.message, 'Não foi possível enviar a fatura.'));
     } finally {
       setGerandoFatura(false);
+    }
+  };
+
+  const marcarFaturaComoPaga = async (fat: Fatura) => {
+    try {
+      await instrutorAPI.marcarPago(fat.id);
+      marcarPago(fat.id);
+      Alert.alert('Marcado como pago', `A fatura de ${fat.alunoNome} foi atualizada.`);
+    } catch (err: any) {
+      Alert.alert(
+        'Erro ao marcar pagamento',
+        toAlertMessage(err?.response?.data?.erro ?? err?.message, 'Não foi possível atualizar a fatura.'),
+      );
     }
   };
 
@@ -748,7 +820,7 @@ export const FaturasInstrutorScreen = () => {
             </View>
             {fat.status === 'pendente' && (
               <View style={{ flexDirection: 'row', gap: 8 }}>
-                <NeonButton label="Marcar pago" onPress={() => { marcarPago(fat.id); Alert.alert('Marcado como pago!'); }} style={{ flex: 1 }} small />
+                <NeonButton label="Marcar pago" onPress={() => marcarFaturaComoPaga(fat)} style={{ flex: 1 }} small />
                 <NeonButton label="Notificar" variant="ghost" onPress={() => Alert.alert('Notificação enviada!')} style={{ flex: 1 }} small />
               </View>
             )}
@@ -842,7 +914,7 @@ export const PerfilInstrutorScreen = () => {
 
       Alert.alert('Salvo!', 'Perfil atualizado com sucesso.');
     } catch (err: any) {
-      Alert.alert('Erro ao salvar', err.response?.data?.erro || err.message || 'Não foi possível atualizar o perfil.');
+      Alert.alert('Erro ao salvar', toAlertMessage(err.response?.data?.erro ?? err.message, 'Não foi possível atualizar o perfil.'));
     } finally {
       setSalvando(false);
     }
@@ -865,7 +937,7 @@ export const PerfilInstrutorScreen = () => {
         <Card>
           <Input label="Nome completo" value={nome} onChangeText={setNome} placeholder="Seu nome" />
           <Input label="CREF" value={cref} onChangeText={setCref} placeholder="123456-G/SP" autoCapitalize="characters" />
-          <Input label="E-mail" value={user?.email || ''} onChangeText={() => {}} placeholder="email@email.com" keyboardType="email-address" autoCapitalize="none" />
+          <Input label="E-mail" value={user?.email || ''} onChangeText={() => {}} placeholder="email@email.com" keyboardType="email-address" autoCapitalize="none" editable={false} />
           <Input label="Chave Pix" value={pix} onChangeText={setPix} placeholder="CPF, e-mail ou telefone" />
           <NeonButton label={salvando ? 'Salvando...' : 'Salvar alterações'} onPress={salvarPerfil} loading={salvando} small />
         </Card>

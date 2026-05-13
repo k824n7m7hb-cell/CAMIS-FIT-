@@ -81,12 +81,21 @@ export const mapFicha = (f: FichaAPI): FichaTreino => ({
   criadoEm: (f.criado_em || '').toString().split('T')[0],
 });
 
+const TIPOS_FATURA_VALIDOS: Fatura['tipo'][] = [
+  'mensalidade',
+  'alteracao_treino',
+  'atualizacao_dieta',
+  'personalizado',
+];
+
 export const mapFatura = (f: FaturaAPI): Fatura => ({
   id: String(f.id),
   alunoId: String(f.aluno_id),
   alunoNome: f.aluno_nome || '',
   instrutorId: String(f.instrutor_id),
-  tipo: f.tipo || 'mensalidade',
+  tipo: TIPOS_FATURA_VALIDOS.includes(f.tipo as Fatura['tipo'])
+    ? (f.tipo as Fatura['tipo'])
+    : 'mensalidade',
   descricao: f.descricao || '',
   valor: parseFloat(String(f.valor)) || 0,
   status: (f.status || 'pendente') as Fatura['status'],
